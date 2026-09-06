@@ -1,0 +1,306 @@
+/* ==========================================================================
+   CONNECT2INFINITY — FLOATING WIDGETS
+   WhatsApp / Call button, social sidebar, and the on-site chatbot.
+   Uses the same colour variables defined in style.css (--maroon, --saffron,
+   --gold, --cream, --ink) so it matches the rest of the site.
+   ========================================================================== */
+
+/* ---------------- Bottom-right action stack (WhatsApp / Call / Chat) ---------------- */
+.c2i-fab-stack {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 1080;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.c2i-fab {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(30, 43, 77, 0.28);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  text-decoration: none;
+  position: relative;
+}
+
+.c2i-fab:hover,
+.c2i-fab:focus {
+  transform: translateY(-3px) scale(1.05);
+  color: #fff;
+  box-shadow: 0 12px 26px rgba(30, 43, 77, 0.35);
+}
+
+.c2i-fab-whatsapp { background: #25D366; }
+.c2i-fab-call     { background: var(--maroon); }
+.c2i-fab-chat      { background: var(--saffron); font-size: 1.6rem; }
+
+.c2i-fab-label {
+  position: absolute;
+  right: 68px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--maroon-dark);
+  color: var(--gold-light);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, right 0.2s ease;
+}
+
+.c2i-fab:hover .c2i-fab-label {
+  opacity: 1;
+  right: 66px;
+}
+
+.c2i-fab-whatsapp::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid #25D366;
+  opacity: 0.55;
+  animation: c2i-pulse 2.2s ease-out infinite;
+}
+
+@keyframes c2i-pulse {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  70%  { transform: scale(1.5); opacity: 0; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* ---------------- Left-side fixed social sidebar ---------------- */
+.c2i-social-rail {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1070;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(30, 43, 77, 0.18);
+  border-radius: 0 10px 10px 0;
+  overflow: hidden;
+}
+
+.c2i-social-rail a {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--maroon);
+  color: var(--gold-light);
+  font-size: 1.05rem;
+  text-decoration: none;
+  transition: background 0.2s ease, width 0.2s ease, padding-left 0.2s ease;
+}
+
+.c2i-social-rail a:hover {
+  background: var(--saffron);
+  color: var(--maroon-dark);
+}
+
+.c2i-social-rail a[data-brand="facebook"]:hover  { background: #1877F2; color: #fff; }
+.c2i-social-rail a[data-brand="instagram"]:hover { background: #E1306C; color: #fff; }
+.c2i-social-rail a[data-brand="youtube"]:hover   { background: #FF0000; color: #fff; }
+.c2i-social-rail a[data-brand="twitter"]:hover   { background: #000; color: #fff; }
+
+@media (max-width: 767.98px) {
+  .c2i-social-rail { display: none; } /* keep small screens uncluttered; icons remain in footer */
+  .c2i-fab-stack { right: 14px; bottom: 14px; gap: 10px; }
+  .c2i-fab { width: 50px; height: 50px; font-size: 1.3rem; }
+  .c2i-fab-label { display: none; }
+}
+
+/* ---------------- Chatbot panel ---------------- */
+.c2i-chat-panel {
+  position: fixed;
+  right: 22px;
+  bottom: 92px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  height: 460px;
+  max-height: calc(100vh - 130px);
+  background: var(--cream);
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(16, 24, 46, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 1090;
+  transform: translateY(16px) scale(0.97);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  border: 1px solid var(--gold-light);
+}
+
+.c2i-chat-panel.c2i-open {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.c2i-chat-header {
+  background: linear-gradient(120deg, var(--maroon), var(--maroon-dark));
+  color: var(--gold-light);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.c2i-chat-header .c2i-chat-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--saffron);
+  color: var(--maroon-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.c2i-chat-header .c2i-chat-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.c2i-chat-header .c2i-chat-sub {
+  font-size: 0.72rem;
+  color: var(--gold-light);
+  opacity: 0.85;
+}
+
+.c2i-chat-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--gold-light);
+  font-size: 1.2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+}
+
+.c2i-chat-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--cream);
+}
+
+.c2i-msg {
+  max-width: 84%;
+  padding: 9px 12px;
+  border-radius: 14px;
+  font-size: 0.86rem;
+  line-height: 1.42;
+}
+
+.c2i-msg a { color: inherit; text-decoration: underline; font-weight: 600; }
+
+.c2i-msg-bot {
+  align-self: flex-start;
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--gold-light);
+  border-bottom-left-radius: 4px;
+}
+
+.c2i-msg-user {
+  align-self: flex-end;
+  background: var(--saffron);
+  color: var(--maroon-dark);
+  border-bottom-right-radius: 4px;
+  font-weight: 500;
+}
+
+.c2i-chat-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 10px;
+  background: var(--cream);
+}
+
+.c2i-chip {
+  border: 1px solid var(--gold);
+  background: #fff;
+  color: var(--maroon);
+  font-size: 0.76rem;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.c2i-chip:hover { background: var(--saffron); color: var(--maroon-dark); }
+
+.c2i-chat-form {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--gold-light);
+  background: #fff;
+}
+
+.c2i-chat-form input {
+  flex: 1;
+  border: 1px solid var(--gold-light);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.86rem;
+  outline: none;
+  background: var(--cream);
+  color: var(--ink);
+}
+
+.c2i-chat-form input:focus { border-color: var(--saffron); }
+
+.c2i-chat-form button {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: var(--maroon);
+  color: var(--gold-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.c2i-chat-form button:hover { background: var(--saffron); color: var(--maroon-dark); }
+
+@media (max-width: 480px) {
+  .c2i-chat-panel {
+    right: 12px;
+    left: 12px;
+    width: auto;
+    bottom: 82px;
+  }
+}
