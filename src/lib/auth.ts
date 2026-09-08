@@ -125,6 +125,10 @@ async function refreshSession(session: AuthSession) {
 }
 
 export async function authenticatedFetch<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  return readResponse<T>(await authenticatedRawFetch(path, init, retry));
+}
+
+export async function authenticatedRawFetch(path: string, init: RequestInit = {}, retry = true): Promise<Response> {
   const session = parseAuthSession(getAuthSnapshot());
   if (!session) throw new ApiError("Please sign in to continue.", 401, "AUTH_REQUIRED");
   const headers = new Headers(init.headers);
@@ -133,9 +137,9 @@ export async function authenticatedFetch<T>(path: string, init: RequestInit = {}
   const response = await fetch(`${API_URL}${path}`, { ...init, headers });
   if (response.status === 401 && retry) {
     await refreshSession(session);
-    return authenticatedFetch<T>(path, init, false);
+    return authenticatedRawFetch(path, init, false);
   }
-  return readResponse<T>(response);
+  return response;
 }
 
 export async function logout() {

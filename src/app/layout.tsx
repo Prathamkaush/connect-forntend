@@ -4,6 +4,8 @@ import "./template.css";
 import "./widgets.css";
 import "./admin.css";
 import "./user.css";
+import "./teacher-editor.css";
+import "./live-guide.css";
 import { AppChrome } from "@/components/AppChrome";
 
 export const metadata: Metadata = {
