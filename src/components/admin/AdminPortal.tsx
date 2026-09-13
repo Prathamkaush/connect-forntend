@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminVoiceCalls } from "./AdminVoiceCalls";
 import Link from "next/link";
 import { FormEvent, useEffect, useState, useSyncExternalStore } from "react";
 import { adminActivity, adminPayments } from "@/data/admin";
@@ -34,6 +35,7 @@ const navigation = [
     label: "Payments & Invoices",
     icon: "bi-credit-card-2-front-fill",
   },
+  { slug: "voice", label: "Voice Calls", icon: "bi-telephone-fill" },
   { slug: "chats", label: "Chat & Usage", icon: "bi-chat-square-text-fill" },
   { slug: "articles", label: "Articles & SEO", icon: "bi-journal-richtext" },
   { slug: "revenue", label: "Revenue Reports", icon: "bi-graph-up-arrow" },
@@ -1672,6 +1674,8 @@ export function AdminPortal({ section }: { section: string }) {
       <PlansPage notify={notify} />
     ) : current === "payments" ? (
       <PaymentsPage {...props} />
+    ) : current === "voice" ? (
+      <AdminVoiceCalls />
     ) : current === "chats" ? (
       <ChatsPage {...props} />
     ) : current === "articles" ? (
@@ -1705,7 +1709,7 @@ export function AdminPortal({ section }: { section: string }) {
         </div>
         <nav>
           <span className="admin-nav-label">Workspace</span>
-          {navigation.slice(0, 9).map((item) => (
+          {navigation.slice(0, 10).map((item) => (
             <Link
               className={current === item.slug ? "active" : ""}
               href={
@@ -1726,7 +1730,7 @@ export function AdminPortal({ section }: { section: string }) {
             </Link>
           ))}
           <span className="admin-nav-label lower">Administration</span>
-          {navigation.slice(9).map((item) => (
+          {navigation.slice(10).map((item) => (
             <Link
               className={current === item.slug ? "active" : ""}
               href={`/admin/${item.slug}`}

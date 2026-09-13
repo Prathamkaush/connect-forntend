@@ -1,12 +1,13 @@
 "use client";
 
+import { VoiceAccount } from "./VoiceUsage";
 import Link from "next/link";
 import { CSSProperties, useEffect, useRef, useState } from "react";
-import { authenticatedFetch, getAuthSnapshot, parseAuthSession } from "@/lib/auth";
+import { authenticatedFetch, authenticatedRawFetch, getAuthSnapshot, parseAuthSession } from "@/lib/auth";
 
-export type Membership = { plan: string; totalQuestions: number; usedQuestions: number; remainingQuestions: number; expiresAt: string | null };
-type Plan = { id: string; name: string; description: string; price: string; currency: string; questionQuota: number; validityDays: number };
-type Payment = { id: string; status: string; amount: string; currency: string; createdAt: string; plan: { name: string }; invoice: { invoiceNumber: string } | null };
+export type Membership = { totalVoiceSeconds: number; usedVoiceSeconds: number; reservedVoiceSeconds: number; remainingVoiceSeconds: number; plan: string; totalQuestions: number; usedQuestions: number; remainingQuestions: number; expiresAt: string | null };
+type Plan = { voiceEnabled: boolean; voiceSeconds: number; id: string; name: string; description: string; price: string; currency: string; questionQuota: number; validityDays: number };
+type Payment = { id: string; status: string; amount: string; currency: string; createdAt: string; plan: { name: string }; invoice: { id: string; invoiceNumber: string } | null };
 type Receipt = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
 type CheckoutOptions = { key: string; order_id: string; amount: number; currency: string; name: string; description: string; prefill: { name?: string; email?: string }; handler: (receipt: Receipt) => void; modal: { ondismiss: () => void } };
 declare global { interface Window { Razorpay?: new (options: CheckoutOptions) => { open: () => void } } }
@@ -61,7 +62,7 @@ export function SubscriptionPage({ current, refresh }: { current: Membership | n
     <div className="user-plan-grid">{plans?.map((item, index) => {
       const isCurrent = item.name === current?.plan || (Number(item.price) === 0 && current?.expiresAt === null);
       const featured = plans.length > 1 && index === 1;
-      const features = [item.description, `${item.questionQuota} questions included`, `${item.validityDays} days of access`, Number(item.price) > 0 ? "One-time payment / No auto-renewal" : "Free access included"];
+      const features = [item.description, `${item.questionQuota} text questions included`, item.voiceEnabled ? `${Math.floor(item.voiceSeconds / 60)} voice minutes shared across teachers` : "Voice calls not included", `${item.validityDays} days of access`, Number(item.price) > 0 ? "One-time payment / No auto-renewal" : "Free access included"];
       return <article className={`user-plan-card${featured ? " featured" : ""}`} key={item.id}>
         {featured && <span className="popular-plan">Explore more</span>}<span className="user-kicker">{isCurrent ? "Your current plan" : "Membership"}</span><h3>{item.name}</h3>
         <div className="user-plan-price"><strong>{money(item.price, item.currency)}</strong>{Number(item.price) > 0 && <small> / {item.validityDays} days</small>}</div><p>{item.questionQuota} questions</p>
@@ -81,8 +82,9 @@ export function SubscriptionUsage({ current }: { current: Membership | null }) {
   const reserved = Math.max(0, total - used - remaining);
   const percent = (value: number) => total ? Math.min(100, value / total * 100) : 0;
   return <div className="user-standard-page narrow">
-    <div className="user-page-heading"><div><span className="user-kicker">Question allowance</span><h2>Usage &amp; Balance</h2><p>See how many questions you have used and what is available in your plan.</p></div></div>
+    <div className="user-page-heading"><div><span className="user-kicker">Your usage</span><h2>Usage &amp; Balance</h2><p>Track your questions and call time, review call history, and see what is available in your plan.</p></div></div>
     <section className="usage-hero-card"><div className="usage-circle" style={{ "--usage": `${percent(used)}%` } as CSSProperties}><span><strong>{current ? remaining : "-"}</strong><small>questions<br />remaining</small></span></div><div><span className="user-kicker light">{current?.plan ?? "Loading..."}</span><h3>{current ? `${used} of your ${total} questions used` : "Loading your question balance..."}</h3><p>{current?.expiresAt ? `Your current allowance is valid until ${new Date(current.expiresAt).toLocaleDateString()}. Purchase a plan whenever you need more questions.` : "Your free questions never expire. Upgrade any time for more conversations with your masters."}</p><Link href="/user/plan">Manage your plan <i className="bi bi-arrow-right" /></Link></div></section>
+    <VoiceAccount />
     <div className="usage-stats">{[{ icon: "chat-heart", value: used, label: "Questions asked" }, { icon: "chat-dots", value: remaining, label: "Questions remaining" }, { icon: "collection", value: total, label: "Plan allowance" }].map((item) => <article key={item.label}><i className={`bi bi-${item.icon}`} /><span><strong>{current ? item.value : "-"}</strong><small>{item.label}</small></span></article>)}</div>
     <section className="user-surface usage-breakdown"><header className="user-section-head compact"><div><span className="user-kicker">Your allowance</span><h3>Question breakdown</h3></div></header>{[{ label: "Used", value: used, icon: "chat-heart" }, { label: "Available", value: remaining, icon: "chat-dots" }, { label: "In progress", value: reserved, icon: "clock-history" }].map((item) => <div key={item.label}><span className="mini-master"><i className={`bi bi-${item.icon}`} /></span><strong>{item.label}</strong><div><i style={{ width: `${percent(item.value)}%` }} /></div><b>{current ? `${item.value} questions` : "-"}</b></div>)}</section>
   </div>;
@@ -92,11 +94,19 @@ export function SubscriptionBilling({ current }: { current: Membership | null })
   const [payments, setPayments] = useState<Payment[] | null>(null);
   const [error, setError] = useState("");
   useEffect(() => { authenticatedFetch<Payment[]>("/payments").then(setPayments).catch((error) => setError(message(error))); }, []);
-  function download(payment: Payment) {
-    if (!payment.invoice) return;
-    const content = `connect2infinity\nInvoice: ${payment.invoice.invoiceNumber}\nPlan: ${payment.plan.name}\nDate: ${new Date(payment.createdAt).toLocaleString()}\nAmount: ${money(payment.amount, payment.currency)}\nStatus: ${payment.status}`;
-    const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${payment.invoice.invoiceNumber}.txt`; anchor.click(); URL.revokeObjectURL(url);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  async function download(payment: Payment) {
+    if (!payment.invoice || downloading) return;
+    setDownloading(payment.id); setError("");
+    try {
+      const response = await authenticatedRawFetch(`/invoices/${payment.invoice.id}/pdf`);
+      if (!response.ok || !response.headers.get("Content-Type")?.includes("application/pdf")) throw new Error("Unable to download your invoice. Please try again.");
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${payment.invoice.invoiceNumber}.pdf`;
+      document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (caught) { setError(message(caught)); }
+    finally { setDownloading(null); }
   }
   return <div className="user-standard-page">
     <div className="user-page-heading"><div><span className="user-kicker">Payments</span><h2>Billing &amp; Invoices</h2><p>View your payment details and download previous invoices.</p></div></div>
@@ -104,7 +114,7 @@ export function SubscriptionBilling({ current }: { current: Membership | null })
     <section className="user-surface payment-method"><div><span className="user-kicker">Secure checkout</span><h3>Payment details</h3></div><div className="payment-card-row"><span><i className="bi bi-credit-card-2-front-fill" /></span><div><strong>Razorpay</strong><small>Choose your payment method at checkout / No automatic renewal</small></div></div></section>
     <section className="user-surface invoice-list"><div className="user-section-head compact"><div><span className="user-kicker">Receipts</span><h3>Payment history</h3></div></div>
       {error && <p role="alert" className="user-auth-error">{error}</p>}{!payments && !error && <p className="plan-fine-print" role="status">Loading payments...</p>}{payments?.length === 0 && <p className="plan-fine-print">You have no payments yet. Your invoices will appear here after a purchase.</p>}
-      {!!payments?.length && <div className="invoice-table"><div className="invoice-head"><span>Invoice</span><span>Plan</span><span>Date</span><span>Amount</span><span>Status</span><span /></div>{payments.map((payment) => <div className="invoice-row" key={payment.id}><strong>{payment.invoice?.invoiceNumber ?? "Pending"}</strong><span>{payment.plan.name}</span><span>{new Date(payment.createdAt).toLocaleDateString()}</span><b>{money(payment.amount, payment.currency)}</b><em>{payment.status.charAt(0) + payment.status.slice(1).toLowerCase()}</em><button type="button" disabled={!payment.invoice} onClick={() => download(payment)} title={payment.invoice ? "Download invoice" : "Invoice available after payment"} aria-label={payment.invoice ? `Download invoice ${payment.invoice.invoiceNumber}` : "Invoice unavailable"}><i className="bi bi-download" /></button></div>)}</div>}
+      {!!payments?.length && <div className="invoice-table"><div className="invoice-head"><span>Invoice</span><span>Plan</span><span>Date</span><span>Amount</span><span>Status</span><span /></div>{payments.map((payment) => <div className="invoice-row" key={payment.id}><strong>{payment.invoice?.invoiceNumber ?? "Pending"}</strong><span>{payment.plan.name}</span><span>{new Date(payment.createdAt).toLocaleDateString()}</span><b>{money(payment.amount, payment.currency)}</b><em>{payment.status.charAt(0) + payment.status.slice(1).toLowerCase()}</em><button type="button" disabled={!payment.invoice || downloading !== null} onClick={() => void download(payment)} title={payment.invoice ? "Download invoice" : "Invoice available after payment"} aria-label={payment.invoice ? `Download invoice ${payment.invoice.invoiceNumber}` : "Invoice unavailable"}><i className={`bi bi-${downloading === payment.id ? "hourglass-split" : "download"}`} /></button></div>)}</div>}
     </section>
   </div>;
 }

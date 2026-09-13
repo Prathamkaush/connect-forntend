@@ -33,6 +33,9 @@ export type TeacherEditorMaster = {
   model: string;
   temperature: number;
   maxOutputTokens: number;
+  voiceEnabled: boolean;
+  voice: string;
+  voiceInstructions: string;
   isActive: boolean;
 };
 
@@ -60,6 +63,9 @@ const emptyForm = {
   model: "provider-default",
   temperature: "0.7",
   maxOutputTokens: "800",
+  voiceEnabled: false,
+  voice: "marin",
+  voiceInstructions: "",
   isActive: true,
 };
 
@@ -362,6 +368,7 @@ export function TeacherEditor({
       model: form.model.trim(),
       temperature: Number(form.temperature),
       maxOutputTokens: Number(form.maxOutputTokens),
+      voiceEnabled: form.voiceEnabled, voice: form.voice, voiceInstructions: form.voiceInstructions,
       isActive: form.isActive,
     };
     try {
@@ -662,6 +669,13 @@ export function TeacherEditor({
                 begin the guide.
               </div>
             )}
+          </section>
+          <section className="voice-settings">
+            <h3>AI voice conversations</h3>
+            <label><input type="checkbox" checked={form.voiceEnabled} onChange={(event) => field("voiceEnabled", event.target.checked)} />Enable calling for this teacher</label>
+            <label>Synthetic voice<select value={form.voice} onChange={(event) => field("voice", event.target.value)}>{["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"].map((voice) => <option key={voice}>{voice}</option>)}</select></label>
+            <label>Optional voice instructions<textarea maxLength={4000} value={form.voiceInstructions} onChange={(event) => field("voiceInstructions", event.target.value)} placeholder="For example: use short, gentle reflections and allow pauses." /></label>
+            <p>The teacher&apos;s existing persona, topic policy, and guide are included automatically.</p>
           </section>
           <label className="teacher-publish">
             <input

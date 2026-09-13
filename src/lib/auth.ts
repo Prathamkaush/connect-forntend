@@ -2,6 +2,9 @@ export type AuthUser = {
   id: string;
   name: string;
   email: string;
+  phone?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
   role: "USER" | "ADMIN" | "SUPER_ADMIN";
   isActive: boolean;
   emailVerified: boolean;
@@ -106,9 +109,17 @@ export async function login(email: string, password: string, remember: boolean) 
   return establishSession(tokens, remember);
 }
 
-export async function register(name: string, email: string, password: string) {
-  const tokens = await publicPost<AuthTokens>("/auth/register", { name, email, password });
+export async function register(name: string, email: string, password: string, details: { phone: string; city: string; postalCode: string }) {
+  const tokens = await publicPost<AuthTokens>("/auth/register", { name, email, password, ...details });
   return establishSession(tokens, true);
+}
+
+export async function updateProfile(details: Pick<AuthUser, "name" | "phone" | "city" | "postalCode">) {
+  const user = await authenticatedFetch<AuthUser>("/users/me", { method: "PATCH", body: JSON.stringify(details) });
+  // Keep the latest tokens if the request refreshed the session.
+  const session = parseAuthSession(getAuthSnapshot());
+  if (session?.user.id === user.id) saveSession({ ...session, user }, window.localStorage.getItem(AUTH_KEY) !== null);
+  return user;
 }
 
 let refreshPromise: Promise<AuthSession> | null = null;

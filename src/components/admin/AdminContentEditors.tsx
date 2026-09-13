@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/auth";
 
 export type AdminPlan = {
   id: string; name: string; description: string; price: string | number;
-  currency: string; questionQuota: number; validityDays: number; isActive: boolean;
+  voiceEnabled: boolean; voiceSeconds: number; currency: string; questionQuota: number; validityDays: number; isActive: boolean;
   _count?: { subscriptions: number };
 };
 
@@ -23,20 +23,21 @@ function EditorShell({ eyebrow, title, description, close, children }: { eyebrow
 }
 
 export function PlanEditor({ plan, close, saved }: { plan?: AdminPlan; close: () => void; saved: (message: string) => void }) {
-  const [form, setForm] = useState({ name: plan?.name ?? "", description: plan?.description ?? "", price: String(plan?.price ?? ""), currency: plan?.currency ?? "INR", questionQuota: String(plan?.questionQuota ?? ""), validityDays: String(plan?.validityDays ?? "30"), isActive: plan?.isActive ?? true });
+  const [form, setForm] = useState({ name: plan?.name ?? "", description: plan?.description ?? "", price: String(plan?.price ?? ""), currency: plan?.currency ?? "INR", questionQuota: String(plan?.questionQuota ?? ""), validityDays: String(plan?.validityDays ?? "30"), voiceEnabled: plan?.voiceEnabled ?? false, voiceMinutes: String((plan?.voiceSeconds ?? 0) / 60), isActive: plan?.isActive ?? true });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const field = (key: keyof typeof form, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError("");
-    const body = { ...form, price: Number(form.price), questionQuota: Number(form.questionQuota), validityDays: Number(form.validityDays) };
+    const { voiceMinutes, ...rest } = form;
+    const body = { ...rest, voiceSeconds: Math.round(Number(voiceMinutes) * 60), price: Number(form.price), questionQuota: Number(form.questionQuota), validityDays: Number(form.validityDays) };
     try {
       await adminRequest(plan ? `/admin/plans/${plan.id}` : "/admin/plans", { method: plan ? "PATCH" : "POST", body: JSON.stringify(body) });
       saved(`${form.name} ${plan ? "updated" : "created"} successfully`);
     } catch (caught) { setError(caught instanceof ApiError ? caught.message : "Unable to save this plan."); }
     finally { setBusy(false); }
   };
-  return <EditorShell eyebrow="Membership studio" title={plan ? `Edit ${plan.name}` : "Create a Plan"} description="Set the price, question allowance, and access period." close={close}><form onSubmit={submit}><div className="content-editor-grid"><label>Plan name<input value={form.name} onChange={(event) => field("name", event.target.value)} minLength={2} required /></label><label>Currency<select value={form.currency} onChange={(event) => field("currency", event.target.value)}><option value="INR">INR — Indian Rupee</option><option value="USD">USD — US Dollar</option><option value="EUR">EUR — Euro</option></select></label><label>Price<input type="number" min="0" step="0.01" value={form.price} onChange={(event) => field("price", event.target.value)} required /></label><label>Question allowance<input type="number" min="1" value={form.questionQuota} onChange={(event) => field("questionQuota", event.target.value)} required /></label><label>Validity in days<input type="number" min="1" value={form.validityDays} onChange={(event) => field("validityDays", event.target.value)} required /></label><label className="content-editor-wide">Plan description<textarea rows={4} value={form.description} onChange={(event) => field("description", event.target.value)} minLength={2} maxLength={500} required /></label></div><label className="teacher-publish"><input type="checkbox" checked={form.isActive} onChange={(event) => field("isActive", event.target.checked)} />Make this plan available for purchase</label>{error && <div className="admin-login-error" role="alert">{error}</div>}<footer><button type="button" className="admin-secondary-btn" onClick={close}>Cancel</button><button type="submit" className="admin-primary-btn" disabled={busy}>{busy ? "Saving…" : plan ? "Save changes" : "Create plan"}</button></footer></form></EditorShell>;
+  return <EditorShell eyebrow="Membership studio" title={plan ? `Edit ${plan.name}` : "Create a Plan"} description="Set the price, question allowance, and access period." close={close}><form onSubmit={submit}><div className="content-editor-grid"><label>Plan name<input value={form.name} onChange={(event) => field("name", event.target.value)} minLength={2} required /></label><label>Currency<select value={form.currency} onChange={(event) => field("currency", event.target.value)}><option value="INR">INR — Indian Rupee</option><option value="USD">USD — US Dollar</option><option value="EUR">EUR — Euro</option></select></label><label>Price<input type="number" min="0" step="0.01" value={form.price} onChange={(event) => field("price", event.target.value)} required /></label><label>Question allowance<input type="number" min="1" value={form.questionQuota} onChange={(event) => field("questionQuota", event.target.value)} required /></label><label>Included voice minutes<input type="number" min="0" max="6000" step="1" value={form.voiceMinutes} onChange={(event) => field("voiceMinutes", event.target.value)} required /></label><label><input type="checkbox" checked={form.voiceEnabled} onChange={(event) => field("voiceEnabled", event.target.checked)} />Include voice in new purchases</label><p>Voice is shared across teachers for the plan validity period. Changes apply to new orders only; existing purchases keep their allowance.</p><label>Validity in days<input type="number" min="1" value={form.validityDays} onChange={(event) => field("validityDays", event.target.value)} required /></label><label className="content-editor-wide">Plan description<textarea rows={4} value={form.description} onChange={(event) => field("description", event.target.value)} minLength={2} maxLength={500} required /></label></div><label className="teacher-publish"><input type="checkbox" checked={form.isActive} onChange={(event) => field("isActive", event.target.checked)} />Make this plan available for purchase</label>{error && <div className="admin-login-error" role="alert">{error}</div>}<footer><button type="button" className="admin-secondary-btn" onClick={close}>Cancel</button><button type="submit" className="admin-primary-btn" disabled={busy}>{busy ? "Saving…" : plan ? "Save changes" : "Create plan"}</button></footer></form></EditorShell>;
 }
 
 export function ArticleEditor({ article, close, saved }: { article?: AdminArticle; close: () => void; saved: (message: string) => void }) {

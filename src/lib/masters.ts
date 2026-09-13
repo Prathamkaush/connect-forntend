@@ -7,6 +7,7 @@ export type GuideBlock =
   | { type: "image"; url: string; alt: string; caption?: string };
 
 export type PublicMaster = {
+  voiceEnabled: boolean;
   id: string; name: string; slug: string; shortDescription: string; description: string; tradition: string | null; era: string | null;
   guideTitle: string | null; guideContent?: GuideBlock[]; imageUrl: string | null; greetingMessage: string;
 };

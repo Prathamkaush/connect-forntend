@@ -1,5 +1,7 @@
 "use client";
 
+import { VoiceCallButton } from "./VoiceCall";
+
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -191,13 +193,14 @@ export function LiveTeachersPage({
             <h2>{profile.name}</h2>
             <p>{profile.description}</p>
           </div>
-          <Link
+          <div className="master-profile-actions"><Link
             href={`/user/chat/${profile.slug}`}
             className="user-primary-action"
           >
             <i className="bi bi-chat-dots" />
             Start a conversation
           </Link>
+          <VoiceCallButton master={profile} /></div>
         </section>
         <section className="user-surface live-guide">
           <span className="user-kicker">Teacher guide</span>
@@ -259,12 +262,13 @@ export function LiveTeachersPage({
             <h3>{master.name}</h3>
             <strong>{master.guideTitle || "Teacher guide"}</strong>
             <p>{master.shortDescription}</p>
-            <div>
+            <div className="master-card-actions">
               <Link href={`/user/teachers/${master.slug}`}>Read guide</Link>
               <Link href={`/user/chat/${master.slug}`}>
                 <i className="bi bi-chat-dots" />
                 Chat now
               </Link>
+              <VoiceCallButton master={master} />
             </div>
           </article>
         ))}
@@ -488,6 +492,7 @@ export function LiveChatPage({
             </p>
           </div>
         </Link>
+        <VoiceCallButton master={master} conversationId={savedConversationId} />
       </header>
       <div
         className="chat-thread"

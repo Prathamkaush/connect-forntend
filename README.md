@@ -1,5 +1,7 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+Voice calling is controlled by the backend feature flag. Teacher/chat pages provide the call interface, Usage shows voice balance/history, and Admin includes voice plan/teacher configuration and call records. Setup and manual acceptance steps are in [the backend voice guide](../connect-backend/docs/voice.md). Never put an OpenAI API key in frontend environment variables. Live browser/provider checks remain pending.
+
 ## Getting Started
 
 First, run the development server:
