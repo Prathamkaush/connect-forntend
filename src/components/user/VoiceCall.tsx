@@ -28,6 +28,8 @@ export function VoiceCallPanel({ master, conversationId, adminTest, close }: { m
   const dialog = useRef<HTMLDialogElement>(null);
   const muteRef = useRef(false);
   const [speakerMuted, setSpeakerMuted] = useState(false);
+  const [outputNotice, setOutputNotice] = useState("");
+  const [choosingOutput, setChoosingOutput] = useState(false);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const [now, setNow] = useState(0);
   const audio = useRef<HTMLAudioElement>(null);
@@ -39,6 +41,28 @@ export function VoiceCallPanel({ master, conversationId, adminTest, close }: { m
   const offset = useRef(0);
   const sounds = useRef<ReturnType<typeof createCallSounds> | null>(null);
   const request = adminTest ? adminRequest : authenticatedFetch;
+
+  async function chooseOutput() {
+    const devices = navigator.mediaDevices as MediaDevices & {
+      selectAudioOutput?: () => Promise<MediaDeviceInfo>;
+    };
+    if (!devices?.selectAudioOutput || !audio.current?.setSinkId) {
+      setOutputNotice("This browser cannot switch call audio to the phone earpiece. Use headphones or your phone’s audio output controls if available.");
+      return;
+    }
+    setChoosingOutput(true);
+    try {
+      const output = await devices.selectAudioOutput();
+      if (!audio.current || !currentId.current) return;
+      await audio.current.setSinkId(output.deviceId);
+      setSpeakerMuted(false);
+      setOutputNotice(`Audio output: ${output.label || "Selected device"}`);
+    } catch (caught) {
+      if (!(caught instanceof DOMException && caught.name === "NotAllowedError")) {
+        setOutputNotice("Unable to switch audio output. Your current output is still selected.");
+      }
+    } finally { setChoosingOutput(false); }
+  }
 
   useEffect(() => { sounds.current?.setMuted(speakerMuted); }, [speakerMuted]);
 
@@ -186,8 +210,9 @@ export function VoiceCallPanel({ master, conversationId, adminTest, close }: { m
 
   const elapsed = call?.connectedAt ? Math.max(0, Math.floor((Math.min(now, Date.parse(call.deadlineAt)) - Date.parse(call.connectedAt)) / 1000)) : 0;
   const remaining = state === "connected" && call ? Math.max(0, Math.floor((Date.parse(call.deadlineAt) - now) / 1000)) : allowance?.remainingSeconds ?? 0;
-  return <dialog ref={dialog} className="voice-backdrop" aria-labelledby="voice-title" onCancel={(event) => { event.preventDefault(); void end().finally(close); }}><section className="voice-panel">
-    <button className="voice-close" aria-label="Close call" type="button" onClick={() => { void end().finally(close); }}>×</button>
+  const canDismiss = state !== "connected" && state !== "reconnecting" && !(call?.connectedAt && !terminal(call));
+  return <dialog ref={dialog} className="voice-backdrop" aria-labelledby="voice-title" onCancel={(event) => { event.preventDefault(); if (canDismiss) void end().finally(close); }}><section className="voice-panel">
+    {canDismiss && <button className="voice-close" aria-label="Close call" type="button" onClick={() => { void end().finally(close); }}>×</button>}
     <span className="user-kicker">{adminTest ? "Admin test · Uses API credit" : "Your space to reflect"}</span>
     {/* eslint-disable-next-line @next/next/no-img-element */}
     {master.imageUrl ? <img className="voice-avatar" src={master.imageUrl} alt={master.name} /> : <div className="voice-avatar voice-initial">{master.name.slice(0, 1)}</div>}
@@ -203,10 +228,12 @@ export function VoiceCallPanel({ master, conversationId, adminTest, close }: { m
     {allowance?.activeCall && (!call || terminal(call)) && !terminal(allowance.activeCall) && <p>A previous call is still open. <button type="button" onClick={() => { currentId.current = allowance.activeCall!.id; void end(); }}>End previous call</button></p>}
     <div className="voice-actions">
       {state === "connected" && <button type="button" aria-pressed={muted} onClick={() => { const next = !muteRef.current; muteRef.current = next; mic.current?.getAudioTracks().forEach((track) => { track.enabled = !next; }); peer.current?.getSenders().forEach((sender) => { if (sender.track?.kind === "audio") sender.track.enabled = !next; }); setMuted(next); }}><i className={`bi bi-mic${muted ? "-mute" : ""}`} />{muted ? "Unmute" : "Mute"}</button>}
-      {state === "connected" && <button type="button" aria-pressed={speakerMuted} onClick={() => setSpeakerMuted((value) => !value)}><i className={`bi bi-volume-${speakerMuted ? "mute" : "up"}`} />{speakerMuted ? "Speaker off" : "Speaker on"}</button>}
+      {state === "connected" && <button type="button" aria-pressed={speakerMuted} onClick={() => setSpeakerMuted((value) => !value)}><i className={`bi bi-volume-${speakerMuted ? "mute" : "up"}`} />{speakerMuted ? "Unmute audio" : "Mute audio"}</button>}
+      {state === "connected" && <button type="button" disabled={choosingOutput} onClick={() => void chooseOutput()}><i className="bi bi-headphones" />{choosingOutput ? "Choosing…" : "Audio output"}</button>}
       {state === "connecting" || state === "connected" || (call && !terminal(call)) ? <button className="voice-end" type="button" onClick={() => void end()}>End call</button>
         : <button className="voice-start" type="button" disabled={!allowance?.enabled || (!adminTest && allowance.remainingSeconds < 1) || !!allowance?.activeCall} onClick={() => void start()}>{state === "ended" || state === "error" ? "Call again" : adminTest ? "Start paid API test" : "Start call"}</button>}
     </div>
+    {state === "connected" && outputNotice && <p className="voice-footnote" role="status">{outputNotice}</p>}
     <p className="voice-footnote">Speaking, listening, pauses, and muted time count while connected. Text questions are separate. We do not record raw audio.</p>
     {adminTest && <p className="voice-footnote">Test calls do not use customer minutes. Maximum 3 minutes; actual API cost depends on token usage.</p>}
   </section></dialog>;

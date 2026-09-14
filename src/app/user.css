@@ -95,6 +95,21 @@
 .featured-masters p{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .daily-reflection blockquote{max-height:18rem;overflow:auto;overflow-wrap:anywhere}
 
+/* Allow dashboard content to shrink within its grid instead of widening the page. */
+.user-home-grid{grid-template-columns:minmax(0,1.45fr) minmax(0,.75fr)}
+.user-home-grid>* ,.user-recent-row>div{min-width:0;max-width:100%}
+.user-home-grid .user-section-head{flex-wrap:wrap;overflow-wrap:anywhere}
+.user-main.chat-active~.user-mobile-new-chat{display:none}
+@media(max-width:991.98px){.user-home-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:767.98px){
+  .user-main.chat-active{position:fixed;top:var(--chat-viewport-top,0px);left:0;right:0;height:var(--chat-viewport-height,100dvh);display:flex;flex-direction:column;min-height:0}
+  .user-main.chat-active .user-chat-page{flex:1;min-height:0;height:auto}
+  .chat-composer textarea{font-size:16px}
+  .chat-composer-wrap{padding-bottom:max(.55rem,env(safe-area-inset-bottom))}
+  .chat-composer button.chat-send{flex-shrink:0;width:44px;height:44px}
+}
+@media(max-width:479.98px){.user-recent-row{grid-template-columns:34px minmax(0,1fr) 15px}}
+
 .user-registration-location{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 .user-registration-location label{display:block;min-width:0;margin-bottom:.85rem;color:var(--maroon);font-size:.78rem;font-weight:700}
 .user-registration-location input{min-width:0}
