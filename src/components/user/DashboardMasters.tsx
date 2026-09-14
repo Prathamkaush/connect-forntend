@@ -1,5 +1,7 @@
 "use client";
 
+import { UserSkeleton } from "./UserSkeleton";
+
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -65,7 +67,7 @@ export function DashboardMasters() {
 
   return <>
     <div className="user-section-head"><div><span className="user-kicker">Suggested for you</span><h3>Continue with a master</h3></div><Link href="/user/teachers">View all masters <i className="bi bi-arrow-right" /></Link></div>
-    {loading && <p role="status">Loading masters and today’s reflection…</p>}
+    {loading && <UserSkeleton variant="cards" count={4} label="Loading masters" />}
     {error && <p role="alert">Unable to refresh your masters. <button type="button" onClick={() => setAttempt((value) => value + 1)}>Try again</button></p>}
     {!loading && !error && !masters.length && <p>Masters will appear here when they are available.</p>}
     <div className="featured-masters">{masters.slice(0, 4).map((master) => <Link href={`/user/chat/${master.slug}`} key={master.id}>
@@ -75,7 +77,7 @@ export function DashboardMasters() {
     </Link>)}</div>
     <div className="user-home-grid"><section className="user-surface"><div className="user-section-head compact"><div><span className="user-kicker">Pick up where you left off</span><h3>Recent conversations</h3></div><Link href="/user/history">All history</Link></div><RecentConversations /></section>
       <section className="user-surface daily-reflection"><i className="bi bi-quote" /><span className="user-kicker">Daily reflection</span>
-        {reflection && text ? <><blockquote>{text}</blockquote><p>{quote?.type === "quote" ? quote.attribution || reflection.name : `From the ${reflection.name} guide`}</p><Link href={`/user/chat/${reflection.slug}`}>Reflect with {reflection.name} <i className="bi bi-arrow-right" /></Link></> : <p>{loading ? "Finding today’s reflection…" : "A reflection will appear when a master’s guide is available."}</p>}
+        {loading ? <UserSkeleton count={1} label="Loading reflection" /> : reflection && text ? <><blockquote>{text}</blockquote><p>{quote?.type === "quote" ? quote.attribution || reflection.name : `From the ${reflection.name} guide`}</p><Link href={`/user/chat/${reflection.slug}`}>Reflect with {reflection.name} <i className="bi bi-arrow-right" /></Link></> : <p>{loading ? "Finding today’s reflection…" : "A reflection will appear when a master’s guide is available."}</p>}
       </section></div>
   </>;
 }

@@ -1,9 +1,16 @@
 "use client";
 
+import { AdminChatDetails } from "./AdminChatDetails";
+import { AdminQuickSearch } from "./AdminQuickSearch";
+import { AdminRevenue } from "./AdminRevenue";
+import { AdminSettings } from "./AdminSettings";
 import { AdminVoiceCalls } from "./AdminVoiceCalls";
 import Link from "next/link";
 import { FormEvent, useEffect, useState, useSyncExternalStore } from "react";
-import { adminActivity, adminPayments } from "@/data/admin";
+import { UserSkeleton } from "../user/UserSkeleton";
+import { AdminModal, AdminPager, DetailFields, downloadInvoice, exportCsv } from "./AdminUi";
+import { AdminUserDetails, AdminUserRow } from "./AdminUserDetails";
+import { DashboardPanels } from "./DashboardPanels";
 import {
   TeacherEditor,
   TeacherEditorMaster,
@@ -60,16 +67,7 @@ type DashboardData = {
     _count: { conversations: number };
   }>;
 };
-type UserRow = {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  isActive: boolean;
-  emailVerified: boolean;
-  freeQuotaUsed: number;
-  createdAt: string;
-};
+type UserRow = AdminUserRow;
 type MasterRow = TeacherEditorMaster & { _count?: { conversations?: number } };
 type PlanRow = AdminPlan;
 type ArticleRow = AdminArticle;
@@ -84,7 +82,7 @@ type PaymentRow = {
   createdAt: string;
   user?: { name: string; email: string };
   plan?: { name: string };
-  invoice?: { invoiceNumber: string } | null;
+  invoice?: { id: string; invoiceNumber: string } | null;
 };
 type ConversationRow = {
   id: string;
@@ -101,13 +99,9 @@ type ActivityRow = {
   entityType: string;
   entityId: string | null;
   createdAt: string;
-  adminUser: { name: string } | null;
-};
-type RevenueRow = {
-  planId: string;
-  currency: string;
-  _sum: { amount: string | number | null };
-  _count: number;
+  adminUser: { name: string; email?: string } | null;
+  metadata?: unknown;
+  ipAddress?: string | null;
 };
 type Paginated<T> = {
   items: T[];
@@ -121,7 +115,27 @@ function useAdminData<T>(path: string | null) {
   useEffect(() => {
     if (!path) return;
     let active = true;
-    adminRequest<T>(path)
+    async function fetchData(): Promise<T> {
+      if (path === "/admin/users?page=1&limit=100") {
+        const first = await adminRequest<Paginated<UserRow>>(path);
+        for (let page = 2; page <= first.meta.pages && active; page++) {
+          const next = await adminRequest<Paginated<UserRow>>(`/admin/users?page=${page}&limit=100`);
+          first.items.push(...next.items);
+        }
+        return first as T;
+      }
+      if (path && ["/admin/payments?page=1&limit=100", "/admin/conversations?page=1&limit=100", "/admin/activity-logs?page=1&limit=100"].includes(path)) {
+        const items: unknown[] = [];
+        for (let page = 1; active; page++) {
+          const rows = await adminRequest<unknown[]>(`${path.split("?")[0]}?page=${page}&limit=100`);
+          items.push(...rows);
+          if (rows.length < 100) break;
+        }
+        return items as T;
+      }
+      return adminRequest<T>(path!);
+    }
+    fetchData()
       .then((value) => {
         if (active) {
           setData(value);
@@ -234,43 +248,15 @@ function StatCard({
   );
 }
 
-function Toolbar({
-  search,
-  setSearch,
-  placeholder,
-  filter,
-}: {
-  search: string;
-  setSearch: (value: string) => void;
-  placeholder: string;
-  filter?: string;
+function Toolbar({ search, setSearch, placeholder, filter, options, value, onFilter, onExport, extra, exportDisabled }: {
+  search: string; setSearch: (value: string) => void; placeholder: string; filter?: string;
+  exportDisabled?: boolean; extra?: React.ReactNode; options?: string[]; value?: string; onFilter?: (value: string) => void; onExport?: () => void;
 }) {
-  return (
-    <div className="admin-toolbar">
-      <label className="admin-search-field">
-        <i className="bi bi-search" />
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder={placeholder}
-        />
-      </label>
-      {filter && (
-        <button type="button" className="admin-secondary-btn">
-          <i className="bi bi-funnel" />
-          {filter}
-          <i className="bi bi-chevron-down" />
-        </button>
-      )}
-      <button
-        type="button"
-        className="admin-icon-btn"
-        aria-label="Download report"
-      >
-        <i className="bi bi-download" />
-      </button>
-    </div>
-  );
+  return <div className="admin-toolbar"><label className="admin-search-field"><i className="bi bi-search" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={placeholder} /></label>
+    {options && onFilter && <select className="admin-secondary-btn" aria-label={filter || "Filter records"} value={value} onChange={(event) => onFilter(event.target.value)}>{options.map((option) => <option key={option}>{option}</option>)}</select>}
+    {extra}
+    {onExport && <button type="button" className="admin-icon-btn" aria-label="Download filtered report" disabled={exportDisabled} onClick={onExport}><i className="bi bi-download" /></button>}
+  </div>;
 }
 
 function EmptyState() {
@@ -284,6 +270,7 @@ function EmptyState() {
 }
 
 function Loading({ error }: { error?: string }) {
+  if (!error) return <UserSkeleton count={6} label="Loading admin records" />;
   return (
     <section className="admin-panel admin-empty">
       <i
@@ -295,12 +282,13 @@ function Loading({ error }: { error?: string }) {
   );
 }
 
-function ActionMenu({ onAction }: { onAction: () => void }) {
+function ActionMenu({ onAction, label = "Open record" }: { onAction: () => void; label?: string }) {
   return (
     <button
       className="admin-row-action"
       type="button"
-      aria-label="Open actions"
+      aria-label={label}
+      title={label}
       onClick={onAction}
     >
       <i className="bi bi-three-dots" />
@@ -425,7 +413,7 @@ function AdminLogin() {
   );
 }
 
-function Dashboard({ notify }: { notify: (message: string) => void }) {
+function Dashboard() {
   const { data, error } = useAdminData<DashboardData>("/admin/dashboard");
   if (!data) return <Loading error={error} />;
   const tokenTotal =
@@ -453,7 +441,7 @@ function Dashboard({ notify }: { notify: (message: string) => void }) {
           tone="blue"
         />
         <StatCard
-          label="Questions this month"
+          label="Total questions"
           value={data.totalQuestions.toLocaleString("en-IN")}
           delta={`${data.totalConversations.toLocaleString("en-IN")} conversations`}
           icon="bi-chat-heart-fill"
@@ -467,152 +455,7 @@ function Dashboard({ notify }: { notify: (message: string) => void }) {
           tone="green"
         />
       </div>
-      <div className="admin-dashboard-grid">
-        <section className="admin-panel revenue-chart-panel">
-          <div className="admin-panel-head">
-            <div>
-              <span className="admin-kicker">Revenue performance</span>
-              <h2>{money(data.monthlyRevenue)}</h2>
-              <small>
-                September 2026 <b>+11.4%</b>
-              </small>
-            </div>
-            <button className="admin-secondary-btn" type="button">
-              Last 6 months <i className="bi bi-chevron-down" />
-            </button>
-          </div>
-          <div className="chart-wrap">
-            <div className="chart-y">
-              <span>₹10L</span>
-              <span>₹7.5L</span>
-              <span>₹5L</span>
-              <span>₹2.5L</span>
-              <span>₹0</span>
-            </div>
-            <svg
-              className="revenue-chart"
-              viewBox="0 0 700 240"
-              role="img"
-              aria-label="Revenue grew steadily from April to September"
-            >
-              <defs>
-                <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="#ff7722" stopOpacity=".25" />
-                  <stop offset="1" stopColor="#ff7722" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path
-                className="chart-grid-line"
-                d="M0 20H700M0 70H700M0 120H700M0 170H700M0 220H700"
-              />
-              <path
-                className="chart-area"
-                d="M0 190 C70 180 80 145 140 154 S230 124 280 132 S365 94 420 105 S510 58 560 74 S640 40 700 32 V220 H0Z"
-              />
-              <path
-                className="chart-line"
-                d="M0 190 C70 180 80 145 140 154 S230 124 280 132 S365 94 420 105 S510 58 560 74 S640 40 700 32"
-              />
-              <g className="chart-dots">
-                <circle cx="0" cy="190" r="5" />
-                <circle cx="140" cy="154" r="5" />
-                <circle cx="280" cy="132" r="5" />
-                <circle cx="420" cy="105" r="5" />
-                <circle cx="560" cy="74" r="5" />
-                <circle cx="700" cy="32" r="5" />
-              </g>
-            </svg>
-            <div className="chart-x">
-              <span>Apr</span>
-              <span>May</span>
-              <span>Jun</span>
-              <span>Jul</span>
-              <span>Aug</span>
-              <span>Sep</span>
-            </div>
-          </div>
-        </section>
-        <section className="admin-panel">
-          <div className="admin-panel-title">
-            <div>
-              <span className="admin-kicker">AI engagement</span>
-              <h3>Top teachers</h3>
-            </div>
-            <Link href="/admin/teachers">View all</Link>
-          </div>
-          <div className="teacher-ranking">
-            {data.popularMasters.slice(0, 5).map((teacher, index) => (
-              <div className="teacher-rank" key={teacher.name}>
-                <span className="rank-number">0{index + 1}</span>
-                <span className="table-avatar">{initials(teacher.name)}</span>
-                <div>
-                  <strong>{teacher.name}</strong>
-                  <small>
-                    {teacher._count.conversations.toLocaleString("en-IN")} chats
-                  </small>
-                </div>
-                <div className="rank-bar">
-                  <span style={{ width: `${96 - index * 12}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-      <div className="admin-dashboard-grid lower">
-        <section className="admin-panel">
-          <div className="admin-panel-title">
-            <div>
-              <span className="admin-kicker">Latest payments</span>
-              <h3>Recent transactions</h3>
-            </div>
-            <Link href="/admin/payments">View all</Link>
-          </div>
-          <div className="admin-mini-list">
-            {adminPayments.slice(0, 4).map((payment) => (
-              <div key={payment.invoice}>
-                <span className="payment-icon">
-                  <i className="bi bi-arrow-down-left" />
-                </span>
-                <div>
-                  <strong>{payment.customer}</strong>
-                  <small>
-                    {payment.invoice} · {payment.method}
-                  </small>
-                </div>
-                <b>{payment.amount}</b>
-                <Status>{payment.status}</Status>
-              </div>
-            ))}
-          </div>
-        </section>
-        <section className="admin-panel">
-          <div className="admin-panel-title">
-            <div>
-              <span className="admin-kicker">Live trail</span>
-              <h3>Recent activity</h3>
-            </div>
-            <Link href="/admin/activity">View log</Link>
-          </div>
-          <div className="activity-compact">
-            {adminActivity.slice(0, 4).map((item) => (
-              <button
-                type="button"
-                key={item.action}
-                onClick={() => notify(item.detail)}
-              >
-                <span className={`activity-icon tone-${item.tone}`}>
-                  <i className={`bi ${item.icon}`} />
-                </span>
-                <span>
-                  <strong>{item.action}</strong>
-                  <small>{item.time}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      </div>
+      <DashboardPanels teachers={data.popularMasters} />
     </>
   );
 }
@@ -621,12 +464,18 @@ function UsersPage({ search, setSearch, notify }: AdminPageProps) {
   const { data, error, reload } = useAdminData<Paginated<UserRow>>(
     "/admin/users?page=1&limit=100",
   );
+  const [filterValue, setFilterValue] = useState("All");
+  const [page, setPage] = useState(1);
+  const [selectedUser, setSelectedUser] = useState<UserRow | "new" | null>(null);
   if (!data) return <Loading error={error} />;
-  const rows = data.items.filter((user) =>
-    `${user.name} ${user.email} ${user.role} ${user.isActive ? "active" : "inactive"}`
+  const matched = data.items.filter((user) =>
+    `${user.name} ${user.email} ${user.subscriptions?.[0]?.plan.name ?? "Free"} ${user.role} ${user.isActive ? "active" : "inactive"}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  const filtered = matched.filter((item) => filterValue === "All" || (filterValue === "Active" ? item.isActive : filterValue === "Blocked" ? !item.isActive : item.role !== "USER"));
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / 10)));
+  const rows = filtered.slice((currentPage - 1) * 10, currentPage * 10);
   return (
     <>
       <PageHeader
@@ -634,13 +483,14 @@ function UsersPage({ search, setSearch, notify }: AdminPageProps) {
         title="User Management"
         description="View seeker accounts, plans, activity, and access status."
         action="Add user"
-        onAction={() => notify("New user form opened")}
+        onAction={() => setSelectedUser("new")}
       />
       <Toolbar
         search={search}
-        setSearch={setSearch}
+        setSearch={(value) => { setSearch(value); setPage(1); }}
         placeholder="Search by name, email or plan..."
-        filter="All users"
+        filter="Filter users" options={["All", "Active", "Blocked", "Administrators"]} value={filterValue} onFilter={(value) => { setFilterValue(value); setPage(1); }}
+        exportDisabled={!filtered.length} onExport={() => exportCsv("users", filtered.map((item) => ({ Name: item.name, Email: item.email, Phone: item.phone, City: item.city, Role: item.role, Plan: item.subscriptions?.[0]?.plan.name ?? "Free", Status: item.isActive ? "Active" : "Blocked", Joined: item.createdAt })))}
       />
       <section className="admin-table-card">
         <table className="admin-table">
@@ -662,42 +512,31 @@ function UsersPage({ search, setSearch, notify }: AdminPageProps) {
                     <span className="table-avatar">{initials(user.name)}</span>
                     <div>
                       <strong>{user.name}</strong>
-                      <small>{user.email}</small>
+                      <small>{user.email}</small>{user.role !== "USER" && <small>{user.role.replaceAll("_", " ")}</small>}
                     </div>
                   </div>
                 </td>
                 <td>
                   <span className="plan-label">
-                    {user.role.replaceAll("_", " ")}
+                    {user.subscriptions?.[0]?.plan.name ?? "Free"}
                   </span>
                 </td>
-                <td>{user.freeQuotaUsed} / 5</td>
+                <td>{user.subscriptions?.[0]?.quotaUsed ?? user.freeQuotaUsed} / {user.subscriptions?.[0]?.quotaTotal ?? 5}</td>
                 <td>{displayDate(user.createdAt)}</td>
                 <td>
                   <Status>{user.isActive ? "Active" : "Paused"}</Status>
                 </td>
                 <td>
-                  <ActionMenu
-                    onAction={() =>
-                      void adminRequest(`/admin/users/${user.id}`, {
-                        method: "PATCH",
-                        body: JSON.stringify({ isActive: !user.isActive }),
-                      }).then(() => {
-                        notify(
-                          `${user.name} ${user.isActive ? "paused" : "activated"}`,
-                        );
-                        reload();
-                      })
-                    }
-                  />
+                  <ActionMenu label={`View details for ${user.name}`} onAction={() => setSelectedUser(user)} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         {!rows.length && <EmptyState />}
-        <TableFooter count={data.meta.total} />
+        <AdminPager count={filtered.length} page={currentPage} setPage={setPage} />
       </section>
+      {selectedUser && <AdminUserDetails user={selectedUser} close={() => setSelectedUser(null)} saved={() => { setSelectedUser(null); reload(); notify("User saved"); }} />}
     </>
   );
 }
@@ -705,12 +544,17 @@ function UsersPage({ search, setSearch, notify }: AdminPageProps) {
 function TeachersPage({ search, setSearch, notify }: AdminPageProps) {
   const { data, error, reload } = useAdminData<MasterRow[]>("/admin/masters");
   const [editing, setEditing] = useState<MasterRow | "new" | null>(null);
+  const [filterValue, setFilterValue] = useState("All");
+  const [page, setPage] = useState(1);
   if (!data) return <Loading error={error} />;
-  const rows = data.filter((teacher) =>
+  const matched = data.filter((teacher) =>
     `${teacher.name} ${teacher.tradition ?? ""} ${teacher.isActive ? "active" : "hidden"}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  const filtered = matched.filter((item) => filterValue === "All" || (filterValue === "Active" ? item.isActive : !item.isActive));
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / 10)));
+  const rows = filtered.slice((currentPage - 1) * 10, currentPage * 10);
   return (
     <>
       <PageHeader
@@ -722,9 +566,10 @@ function TeachersPage({ search, setSearch, notify }: AdminPageProps) {
       />
       <Toolbar
         search={search}
-        setSearch={setSearch}
+        setSearch={(value) => { setSearch(value); setPage(1); }}
         placeholder="Search teachers or traditions..."
-        filter="All statuses"
+        filter="Filter teachers" options={["All", "Active", "Hidden"]} value={filterValue} onFilter={(value) => { setFilterValue(value); setPage(1); }}
+        exportDisabled={!filtered.length} onExport={() => exportCsv("teachers", filtered.map((item) => ({ Name: item.name, Tradition: item.tradition, Chats: item._count?.conversations ?? 0, Status: item.isActive ? "Active" : "Hidden" })))}
       />
       <section className="admin-table-card">
         <table className="admin-table">
@@ -769,7 +614,7 @@ function TeachersPage({ search, setSearch, notify }: AdminPageProps) {
           </tbody>
         </table>
         {!rows.length && <EmptyState />}
-        <TableFooter count={data.length} />
+        <AdminPager count={filtered.length} page={currentPage} setPage={setPage} />
       </section>
       {editing && (
         <TeacherEditor
@@ -789,10 +634,15 @@ function TeachersPage({ search, setSearch, notify }: AdminPageProps) {
 function PersonalitiesPage({ search, setSearch, notify }: AdminPageProps) {
   const { data, error, reload } = useAdminData<MasterRow[]>("/admin/masters");
   const [editing, setEditing] = useState<MasterRow | null>(null);
+  const [filterValue, setFilterValue] = useState("All");
+  const [page, setPage] = useState(1);
   if (!data) return <Loading error={error} />;
-  const rows = data.filter((teacher) =>
+  const matched = data.filter((teacher) =>
     teacher.name.toLowerCase().includes(search.toLowerCase()),
   );
+  const filtered = matched.filter((item) => filterValue === "All" || (filterValue === "Published" ? !!item.systemPrompt : !item.systemPrompt));
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / 10)));
+  const rows = filtered.slice((currentPage - 1) * 10, currentPage * 10);
   return (
     <>
       <PageHeader
@@ -802,9 +652,10 @@ function PersonalitiesPage({ search, setSearch, notify }: AdminPageProps) {
       />
       <Toolbar
         search={search}
-        setSearch={setSearch}
+        setSearch={(value) => { setSearch(value); setPage(1); }}
         placeholder="Search teacher personalities..."
-        filter="Prompt status"
+        filter="Filter personalities" options={["All", "Published", "Draft"]} value={filterValue} onFilter={(value) => { setFilterValue(value); setPage(1); }}
+        exportDisabled={!filtered.length} onExport={() => exportCsv("personalities", filtered.map((item) => ({ Name: item.name, Model: item.model, Status: item.systemPrompt ? "Published" : "Draft", SystemPrompt: item.systemPrompt, Personality: item.personalityPrompt, MaxTokens: item.maxOutputTokens })))}
       />
       <div className="prompt-grid">
         {rows.map((teacher) => (
@@ -845,6 +696,8 @@ function PersonalitiesPage({ search, setSearch, notify }: AdminPageProps) {
           </article>
         ))}
       </div>
+      {!filtered.length && <EmptyState />}
+      <AdminPager count={filtered.length} page={currentPage} setPage={setPage} />
       {editing && (
         <TeacherEditor
           master={editing}
@@ -942,16 +795,27 @@ function PlansPage({ notify }: { notify: (message: string) => void }) {
   );
 }
 
-function PaymentsPage({ search, setSearch, notify }: AdminPageProps) {
+function PaymentsPage({ search, setSearch }: AdminPageProps) {
   const { data, error } = useAdminData<PaymentRow[]>(
     "/admin/payments?page=1&limit=100",
   );
+  const [filterValue, setFilterValue] = useState("All");
+  const [page, setPage] = useState(1);
+  const [month, setMonth] = useState("");
+  const [currency, setCurrency] = useState("INR");
+  const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [invoiceError, setInvoiceError] = useState("");
   if (!data) return <Loading error={error} />;
-  const rows = data.filter((payment) =>
+  const matched = data.filter((payment) =>
     `${payment.invoice?.invoiceNumber ?? payment.providerOrderId} ${payment.user?.name ?? ""} ${payment.status}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  const filtered = matched.filter((item) => (filterValue === "All" || item.status === filterValue) && (!month || item.createdAt.startsWith(month)) && item.currency === currency);
+  const currencyMoney = (value: number) => money(value, currency);
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / 10)));
+  const rows = filtered.slice((currentPage - 1) * 10, currentPage * 10);
   return (
     <>
       <PageHeader
@@ -962,25 +826,25 @@ function PaymentsPage({ search, setSearch, notify }: AdminPageProps) {
       <div className="admin-stats-grid compact">
         <StatCard
           label="Gross volume"
-          value={money(
-            data
+          value={currencyMoney(
+            filtered
               .filter((item) => item.status === "PAID")
               .reduce((sum, item) => sum + Number(item.amount), 0),
           )}
-          delta={`${data.length} recorded payments`}
+          delta={`${filtered.length} recorded payments`}
           icon="bi-wallet2"
         />
         <StatCard
           label="Successful"
-          value={String(data.filter((item) => item.status === "PAID").length)}
+          value={String(filtered.filter((item) => item.status === "PAID").length)}
           delta="Server-verified payments"
           icon="bi-check2-circle"
           tone="green"
         />
         <StatCard
           label="Pending"
-          value={money(
-            data
+          value={currencyMoney(
+            filtered
               .filter((item) => item.status === "CREATED")
               .reduce((sum, item) => sum + Number(item.amount), 0),
           )}
@@ -991,9 +855,11 @@ function PaymentsPage({ search, setSearch, notify }: AdminPageProps) {
       </div>
       <Toolbar
         search={search}
-        setSearch={setSearch}
+        setSearch={(value) => { setSearch(value); setPage(1); }}
         placeholder="Search invoice or customer..."
-        filter="September 2026"
+        extra={<><select className="admin-secondary-btn" aria-label="Payment currency" value={currency} onChange={(event) => { setCurrency(event.target.value); setPage(1); }}>{[...new Set(["INR", ...data.map((item) => item.currency)])].map((value) => <option key={value}>{value}</option>)}</select><label className="admin-month-filter">Month<input type="month" value={month} onChange={(event) => { setMonth(event.target.value); setPage(1); }} /></label></>}
+        filter="Filter payments" options={["All", "PAID", "CREATED", "FAILED", "REFUNDED"]} value={filterValue} onFilter={(value) => { setFilterValue(value); setPage(1); }}
+        exportDisabled={!filtered.length} onExport={() => exportCsv("payments", filtered.map((item) => ({ Invoice: item.invoice?.invoiceNumber, Order: item.providerOrderId, Customer: item.user?.name, Email: item.user?.email, Amount: item.amount, Currency: item.currency, Status: item.status, Date: item.createdAt })))}
       />
       <section className="admin-table-card">
         <table className="admin-table">
@@ -1026,51 +892,50 @@ function PaymentsPage({ search, setSearch, notify }: AdminPageProps) {
                   <Status>{payment.status}</Status>
                 </td>
                 <td>
-                  <ActionMenu
-                    onAction={() =>
-                      notify(
-                        `Invoice ${payment.invoice?.invoiceNumber ?? payment.providerOrderId} selected`,
-                      )
-                    }
-                  />
+                  <ActionMenu label="View payment details" onAction={() => { setSelectedPayment(payment); setInvoiceError(""); }} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         {!rows.length && <EmptyState />}
-        <TableFooter count={data.length} />
+        <AdminPager count={filtered.length} page={currentPage} setPage={setPage} />
       </section>
+      {selectedPayment && <AdminModal title="Payment details" close={() => setSelectedPayment(null)}><DetailFields fields={{ Customer: selectedPayment.user?.name, Email: selectedPayment.user?.email, Plan: selectedPayment.plan?.name, Amount: money(selectedPayment.amount, selectedPayment.currency), Status: selectedPayment.status, Provider: selectedPayment.provider, "Order ID": selectedPayment.providerOrderId, "Payment ID": selectedPayment.id, Invoice: selectedPayment.invoice?.invoiceNumber ?? "Not issued", Date: displayDate(selectedPayment.createdAt) }} />{selectedPayment.invoice ? <button className="admin-primary-btn" disabled={invoiceBusy} onClick={() => { setInvoiceBusy(true); setInvoiceError(""); void downloadInvoice(selectedPayment.invoice!.id, selectedPayment.invoice!.invoiceNumber).catch((caught) => setInvoiceError(caught instanceof Error ? caught.message : "Download failed")).finally(() => setInvoiceBusy(false)); }}>{invoiceBusy ? "Downloading..." : "Download invoice PDF"}</button> : <p>An invoice is available after a successful payment.</p>}{invoiceError && <p role="alert">{invoiceError}</p>}</AdminModal>}
     </>
   );
 }
 
-function ChatsPage({ search, setSearch, notify }: AdminPageProps) {
+function ChatsPage({ search, setSearch }: AdminPageProps) {
   const { data, error } = useAdminData<ConversationRow[]>(
     "/admin/conversations?page=1&limit=100",
   );
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<string | null>(null);
   if (!data) return <Loading error={error} />;
-  const rows = data.filter((chat) =>
+  const filtered = data.filter((chat) =>
     `${chat.id} ${chat.user.name} ${chat.master.name} ${chat.title ?? ""}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / 10)));
+  const rows = filtered.slice((currentPage - 1) * 10, currentPage * 10);
   return (
     <>
       <PageHeader
         eyebrow="Conversations"
         title="Chat & Usage Monitoring"
-        description="Monitor AI conversations, question volume, safety flags, and engagement."
+        description="Review conversations, messages, and activity."
       />
       <div className="admin-stats-grid compact">
         <StatCard
-          label="Chats today"
+          label="Conversations"
           value={data.length.toLocaleString("en-IN")}
           delta="Recent conversations"
           icon="bi-chat-dots-fill"
         />
         <StatCard
-          label="Avg. duration"
+          label="Messages"
           value={String(
             data.reduce((sum, item) => sum + item._count.messages, 0),
           )}
@@ -1079,7 +944,7 @@ function ChatsPage({ search, setSearch, notify }: AdminPageProps) {
           tone="blue"
         />
         <StatCard
-          label="Needs review"
+          label="Inactive conversations"
           value={String(data.filter((item) => item.status !== "ACTIVE").length)}
           delta="Non-active conversations"
           icon="bi-flag-fill"
@@ -1088,7 +953,7 @@ function ChatsPage({ search, setSearch, notify }: AdminPageProps) {
       </div>
       <Toolbar
         search={search}
-        setSearch={setSearch}
+        setSearch={(value) => { setSearch(value); setPage(1); }}
         placeholder="Search chat, user, teacher or topic..."
         filter="All conversations"
       />
@@ -1100,9 +965,8 @@ function ChatsPage({ search, setSearch, notify }: AdminPageProps) {
               <th>User</th>
               <th>Teacher</th>
               <th>Topic</th>
-              <th>Questions</th>
-              <th>Duration</th>
-              <th>Safety</th>
+              <th>Messages</th>
+              <th>Status</th>
               <th />
             </tr>
           </thead>
@@ -1119,13 +983,12 @@ function ChatsPage({ search, setSearch, notify }: AdminPageProps) {
                 <td>{chat.master.name}</td>
                 <td>{chat.title || "Untitled"}</td>
                 <td>{chat._count.messages}</td>
-                <td>—</td>
                 <td>
                   <Status>{chat.status}</Status>
                 </td>
                 <td>
                   <ActionMenu
-                    onAction={() => notify(`Conversation ${chat.id} selected`)}
+                    onAction={() => setSelected(chat.id)}
                   />
                 </td>
               </tr>
@@ -1133,8 +996,9 @@ function ChatsPage({ search, setSearch, notify }: AdminPageProps) {
           </tbody>
         </table>
         {!rows.length && <EmptyState />}
-        <TableFooter count={data.length} />
+        <AdminPager count={filtered.length} page={currentPage} setPage={setPage} />
       </section>
+      {selected && <AdminChatDetails key={selected} id={selected} close={() => setSelected(null)} />}
     </>
   );
 }
@@ -1244,325 +1108,20 @@ function ArticlesPage({ search, setSearch, notify }: AdminPageProps) {
   );
 }
 
-function RevenuePage({ notify }: { notify: (message: string) => void }) {
-  const { data, error } = useAdminData<RevenueRow[]>("/admin/reports/revenue");
-  if (!data) return <Loading error={error} />;
-  const total = data.reduce(
-    (sum, item) => sum + Number(item._sum.amount ?? 0),
-    0,
-  );
-  const transactionCount = data.reduce((sum, item) => sum + item._count, 0);
-  const months = [
-    { label: "Apr", value: 46 },
-    { label: "May", value: 58 },
-    { label: "Jun", value: 64 },
-    { label: "Jul", value: 73 },
-    { label: "Aug", value: 82 },
-    { label: "Sep", value: 94 },
-  ];
-  return (
-    <>
-      <PageHeader
-        eyebrow="Financial intelligence"
-        title="Revenue Reports"
-        description="Understand recurring revenue, plan performance, and subscriber movement."
-      />
-      <div className="report-filter">
-        <button type="button">
-          <i className="bi bi-calendar3" />
-          01 Apr 2026 — 03 Sep 2026
-        </button>
-        <button
-          className="admin-primary-btn"
-          type="button"
-          onClick={() => notify("Revenue report exported as CSV")}
-        >
-          <i className="bi bi-download" />
-          Export report
-        </button>
-      </div>
-      <div className="admin-stats-grid">
-        <StatCard
-          label="Total revenue"
-          value={money(total)}
-          delta={`${transactionCount} paid transactions`}
-          icon="bi-currency-rupee"
-        />
-        <StatCard
-          label="MRR"
-          value={money(total)}
-          delta="Recorded paid revenue"
-          icon="bi-arrow-repeat"
-          tone="blue"
-        />
-        <StatCard
-          label="ARPU"
-          value={money(transactionCount ? total / transactionCount : 0)}
-          delta="Average paid order"
-          icon="bi-person-check-fill"
-          tone="purple"
-        />
-        <StatCard
-          label="Revenue groups"
-          value={String(data.length)}
-          delta="Plans and currencies"
-          icon="bi-graph-down-arrow"
-          tone="green"
-        />
-      </div>
-      <div className="admin-dashboard-grid">
-        <section className="admin-panel">
-          <div className="admin-panel-title">
-            <div>
-              <span className="admin-kicker">Month-on-month</span>
-              <h3>Revenue growth</h3>
-            </div>
-            <b>{money(total)} total</b>
-          </div>
-          <div className="bar-chart">
-            {months.map((month) => (
-              <div key={month.label}>
-                <span className="bar-value">
-                  {money((total * month.value) / 564)}
-                </span>
-                <span className="bar-column">
-                  <i style={{ height: `${month.value}%` }} />
-                </span>
-                <small>{month.label}</small>
-              </div>
-            ))}
-          </div>
-        </section>
-        <section className="admin-panel">
-          <div className="admin-panel-title">
-            <div>
-              <span className="admin-kicker">Revenue split</span>
-              <h3>By subscription plan</h3>
-            </div>
-          </div>
-          <div className="donut-wrap">
-            <div className="revenue-donut">
-              <span>
-                <strong>{money(total)}</strong>
-                <small>Recorded</small>
-              </span>
-            </div>
-            <div className="donut-legend">
-              {data.slice(0, 3).map((group, index) => (
-                <span key={`${group.planId}-${group.currency}`}>
-                  <i
-                    className={["dot-orange", "dot-indigo", "dot-cream"][index]}
-                  />
-                  <b>{group.planId.slice(-8)}</b>
-                  <small>
-                    {total
-                      ? Math.round(
-                          (Number(group._sum.amount ?? 0) / total) * 100,
-                        )
-                      : 0}
-                    % · {money(group._sum.amount, group.currency)}
-                  </small>
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
-    </>
-  );
-}
-
-function SettingsPage({ notify }: { notify: (message: string) => void }) {
-  const { data, error } =
-    useAdminData<Record<string, unknown>>("/admin/settings");
-  if (!data) return <Loading error={error} />;
-  return <SettingsForm settings={data} notify={notify} />;
-}
-
-function SettingsForm({
-  settings,
-  notify,
-}: {
-  settings: Record<string, unknown>;
-  notify: (message: string) => void;
-}) {
-  const stringSetting = (key: string, fallback: string) =>
-    typeof settings[key] === "string" ? settings[key] : fallback;
-  const booleanSetting = (key: string, fallback: boolean) =>
-    typeof settings[key] === "boolean" ? settings[key] : fallback;
-  const [platformName, setPlatformName] = useState(() =>
-    stringSetting("platform.name", "connect2infinity"),
-  );
-  const [supportEmail, setSupportEmail] = useState(() =>
-    stringSetting("platform.supportEmail", "connect@connect2infinity.ai"),
-  );
-  const [timezone, setTimezone] = useState(() =>
-    stringSetting("platform.timezone", "Asia/Kolkata"),
-  );
-  const [language, setLanguage] = useState(() =>
-    stringSetting("platform.language", "English"),
-  );
-  const [maintenance, setMaintenance] = useState(() =>
-    booleanSetting("platform.maintenance", false),
-  );
-  const [moderation, setModeration] = useState(() =>
-    booleanSetting("ai.moderation", true),
-  );
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    await Promise.all(
-      Object.entries({
-        "platform.name": platformName,
-        "platform.supportEmail": supportEmail,
-        "platform.timezone": timezone,
-        "platform.language": language,
-        "platform.maintenance": maintenance,
-        "ai.moderation": moderation,
-      }).map(([key, value]) =>
-        adminRequest(`/admin/settings/${encodeURIComponent(key)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ value }),
-        }),
-      ),
-    );
-    notify("System settings saved");
-  };
-  return (
-    <>
-      <PageHeader
-        eyebrow="Configuration"
-        title="System Settings"
-        description="Manage platform identity, AI safeguards, notifications, and security."
-      />
-      <form className="settings-grid" onSubmit={save}>
-        <section className="admin-panel settings-nav">
-          <button className="active" type="button">
-            <i className="bi bi-sliders" />
-            General
-          </button>
-          <button type="button">
-            <i className="bi bi-robot" />
-            AI configuration
-          </button>
-          <button type="button">
-            <i className="bi bi-bell" />
-            Notifications
-          </button>
-          <button type="button">
-            <i className="bi bi-shield-lock" />
-            Security
-          </button>
-          <button type="button">
-            <i className="bi bi-plug" />
-            Integrations
-          </button>
-        </section>
-        <section className="admin-panel settings-form">
-          <div className="settings-section">
-            <span className="admin-kicker">Platform details</span>
-            <h3>General settings</h3>
-            <div className="settings-fields">
-              <label>
-                Platform name
-                <input
-                  value={platformName}
-                  onChange={(event) => setPlatformName(event.target.value)}
-                />
-              </label>
-              <label>
-                Support email
-                <input
-                  type="email"
-                  value={supportEmail}
-                  onChange={(event) => setSupportEmail(event.target.value)}
-                />
-              </label>
-              <label>
-                Default timezone
-                <select
-                  value={timezone}
-                  onChange={(event) => setTimezone(event.target.value)}
-                >
-                  <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
-                  <option value="UTC">UTC</option>
-                </select>
-              </label>
-              <label>
-                Default language
-                <select
-                  value={language}
-                  onChange={(event) => setLanguage(event.target.value)}
-                >
-                  <option>English</option>
-                  <option>Hindi</option>
-                </select>
-              </label>
-            </div>
-          </div>
-          <div className="settings-section">
-            <span className="admin-kicker">Controls</span>
-            <h3>Platform behaviour</h3>
-            <Toggle
-              label="AI response moderation"
-              detail="Screen generated responses against safety policies."
-              checked={moderation}
-              setChecked={setModeration}
-            />
-            <Toggle
-              label="Maintenance mode"
-              detail="Temporarily prevent seekers from accessing the platform."
-              checked={maintenance}
-              setChecked={setMaintenance}
-            />
-          </div>
-          <div className="settings-save">
-            <button className="admin-primary-btn" type="submit">
-              Save changes
-            </button>
-          </div>
-        </section>
-      </form>
-    </>
-  );
-}
-
-function Toggle({
-  label,
-  detail,
-  checked,
-  setChecked,
-}: {
-  label: string;
-  detail: string;
-  checked: boolean;
-  setChecked: (value: boolean) => void;
-}) {
-  return (
-    <label className="setting-toggle">
-      <span>
-        <strong>{label}</strong>
-        <small>{detail}</small>
-      </span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => setChecked(event.target.checked)}
-      />
-      <i />
-    </label>
-  );
-}
-
 function ActivityPage({ search, setSearch }: Omit<AdminPageProps, "notify">) {
   const { data, error } = useAdminData<ActivityRow[]>(
     "/admin/activity-logs?page=1&limit=100",
   );
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<ActivityRow | null>(null);
   if (!data) return <Loading error={error} />;
-  const rows = data.filter((item) =>
-    `${item.action} ${item.entityType} ${item.adminUser?.name ?? "System"}`
+  const filtered = data.filter((item) =>
+    `${item.id} ${item.entityId ?? ""} ${item.action} ${item.action.replaceAll("_", " ")} ${item.entityType} ${item.adminUser?.name ?? "System"}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / 10)));
+  const rows = filtered.slice((currentPage - 1) * 10, currentPage * 10);
   return (
     <>
       <PageHeader
@@ -1572,7 +1131,7 @@ function ActivityPage({ search, setSearch }: Omit<AdminPageProps, "notify">) {
       />
       <Toolbar
         search={search}
-        setSearch={setSearch}
+        setSearch={(value) => { setSearch(value); setPage(1); }}
         placeholder="Search actions, details or people..."
         filter="All activity"
       />
@@ -1593,38 +1152,21 @@ function ActivityPage({ search, setSearch }: Omit<AdminPageProps, "notify">) {
               {item.adminUser?.name ?? "System"}
             </span>
             <time>{displayDate(item.createdAt)}</time>
-            <button className="admin-row-action" type="button">
+            <button className="admin-row-action" type="button" aria-label="View activity details" onClick={() => setSelected(item)}>
               <i className="bi bi-three-dots" />
             </button>
           </div>
         ))}
         {!rows.length && <EmptyState />}
-        <TableFooter count={data.length} />
+        <AdminPager count={filtered.length} page={currentPage} setPage={setPage} />
       </section>
+      {selected && <AdminModal title="Activity details" close={() => setSelected(null)}><DetailFields fields={{ Action: selected.action.replaceAll("_", " "), Actor: selected.adminUser?.name ?? "System", Email: selected.adminUser?.email ?? "Unavailable", Entity: selected.entityType, "Entity ID": selected.entityId ?? "Unavailable", Date: new Date(selected.createdAt).toLocaleString(), "IP address": selected.ipAddress ?? "Unavailable", "Log ID": selected.id }} />{selected.metadata != null && <><h3>Details</h3><pre className="admin-activity-metadata">{JSON.stringify(selected.metadata, null, 2)}</pre></>}</AdminModal>}
     </>
   );
 }
 
 function TableFooter({ count }: { count: number }) {
-  return (
-    <div className="admin-table-footer">
-      <span>
-        Showing 1–{count} of {count}
-      </span>
-      <div>
-        <button type="button" disabled>
-          <i className="bi bi-chevron-left" />
-        </button>
-        <button type="button" className="active">
-          1
-        </button>
-        <button type="button">2</button>
-        <button type="button">
-          <i className="bi bi-chevron-right" />
-        </button>
-      </div>
-    </div>
-  );
+  return <AdminPager count={count} page={1} size={Math.max(1, count)} />;
 }
 
 type AdminPageProps = {
@@ -1643,8 +1185,13 @@ export function AdminPortal({ section }: { section: string }) {
   const navigationStats = useAdminData<DashboardData>(
     session ? "/admin/dashboard" : null,
   ).data;
+  const { data: identity, reload: reloadIdentity } = useAdminData<Record<string, unknown>>(session ? "/admin/settings" : null);
+  useEffect(() => { const update = () => reloadIdentity(); window.addEventListener("c2i-admin-settings-change", update); return () => window.removeEventListener("c2i-admin-settings-change", update); }, [reloadIdentity]);
+  const platformName = typeof identity?.["platform.name"] === "string" ? identity["platform.name"] : "connect2infinity";
+  const supportEmail = typeof identity?.["platform.supportEmail"] === "string" ? identity["platform.supportEmail"] : "connect@connect2infinity.ai";
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
+  useEffect(() => { const timer = window.setTimeout(() => setSearch(new URLSearchParams(window.location.search).get("search") ?? ""), 0); return () => window.clearTimeout(timer); }, [section]);
   const [toast, setToast] = useState("");
   const current = validSections.has(
     section as (typeof navigation)[number]["slug"],
@@ -1681,13 +1228,13 @@ export function AdminPortal({ section }: { section: string }) {
     ) : current === "articles" ? (
       <ArticlesPage {...props} />
     ) : current === "revenue" ? (
-      <RevenuePage notify={notify} />
+      <AdminRevenue />
     ) : current === "settings" ? (
-      <SettingsPage notify={notify} />
+      <AdminSettings />
     ) : current === "activity" ? (
       <ActivityPage search={search} setSearch={setSearch} />
     ) : (
-      <Dashboard notify={notify} />
+      <Dashboard />
     );
 
   return (
@@ -1696,7 +1243,7 @@ export function AdminPortal({ section }: { section: string }) {
         <div className="admin-sidebar-brand">
           <span className="admin-brand-mark">ॐ</span>
           <span>
-            <strong>connect2infinity</strong>
+            <strong>{platformName}</strong>
             <small>Admin Portal</small>
           </span>
           <button
@@ -1745,14 +1292,14 @@ export function AdminPortal({ section }: { section: string }) {
             </Link>
           ))}
         </nav>
-        <div className="admin-sidebar-help">
+        <a className="admin-sidebar-help" href={`mailto:${supportEmail}`}>
           <i className="bi bi-life-preserver" />
           <div>
             <strong>Need assistance?</strong>
-            <span>View admin documentation</span>
+            <span>Contact support</span>
           </div>
           <i className="bi bi-arrow-up-right" />
-        </div>
+        </a>
       </aside>
       {sidebarOpen && (
         <button
@@ -1780,24 +1327,8 @@ export function AdminPortal({ section }: { section: string }) {
             </div>
           </div>
           <div className="admin-top-actions">
-            <button
-              type="button"
-              className="admin-top-search"
-              onClick={() => notify("Use the page search to find records")}
-            >
-              <i className="bi bi-search" />
-              <span>Quick search</span>
-              <kbd>⌘ K</kbd>
-            </button>
-            <button
-              type="button"
-              className="admin-notification"
-              aria-label="Notifications"
-              onClick={() => notify("You have 3 new notifications")}
-            >
-              <i className="bi bi-bell" />
-              <span />
-            </button>
+            <AdminQuickSearch pages={navigation.map((item) => ({ label: item.label, href: item.slug === "dashboard" ? "/admin" : `/admin/${item.slug}` }))} />
+            <Link className="admin-notification" href="/admin/activity" aria-label="Activity logs"><i className="bi bi-bell" /></Link>
             <div className="admin-profile">
               <span>{sessionInitials}</span>
               <div>

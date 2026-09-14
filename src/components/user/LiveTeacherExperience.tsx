@@ -1,5 +1,7 @@
 "use client";
 
+import { UserSkeleton } from "./UserSkeleton";
+
 import { VoiceCallButton } from "./VoiceCall";
 
 import Link from "next/link";
@@ -174,7 +176,7 @@ export function LiveTeachersPage({
     if (!profile)
       return (
         <div className="user-standard-page">
-          <div className="user-surface">Loading guide…</div>
+          <UserSkeleton variant="hero" label="Loading master" /><UserSkeleton variant="guide" label="Loading guide" />
         </div>
       );
     return (
@@ -217,7 +219,7 @@ export function LiveTeachersPage({
   if (!masters)
     return (
       <div className="user-standard-page">
-        <div className="user-surface">Loading Masters…</div>
+        <UserSkeleton variant="cards" count={6} label="Loading masters" />
       </div>
     );
   const rows = masters.filter((master) =>
@@ -311,6 +313,12 @@ export function LiveChatPage({
     if (!teacherSlug) return;
     getMaster(teacherSlug)
       .then(async (value) => {
+        const profile = await authenticatedFetch<{ conversationLanguage?: string }>("/users/me");
+        const greeting = profile.conversationLanguage === "hi"
+          ? `नमस्ते। आइए, ${value.name} की शिक्षाओं के माध्यम से आपके प्रश्न पर विचार करें। आज आपके मन में क्या है?`
+          : profile.conversationLanguage === "hinglish"
+            ? `Namaste. Aaiye, ${value.name} ki seekh ke saath aapke sawal par baat karein. Aaj aapke mann mein kya hai?`
+            : value.greetingMessage;
         const restored: ChatMessage[] = [];
         if (savedConversationId) {
           const conversation = await authenticatedFetch<{ master: { slug: string } }>(`/conversations/${encodeURIComponent(savedConversationId)}`);
@@ -326,7 +334,7 @@ export function LiveChatPage({
         if (active) {
           setConversationId(savedConversationId ?? null);
           setMaster(value);
-          setMessages(restored.length ? restored : [{ from: "master", text: value.greetingMessage }]);
+          setMessages(restored.length ? restored : [{ from: "master", text: greeting }]);
         }
       })
       .catch((caught) => {

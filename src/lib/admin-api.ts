@@ -90,7 +90,7 @@ async function refresh(session: AdminSession) {
   return refreshing;
 }
 
-export async function adminRequest<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+export async function adminRawRequest(path: string, init: RequestInit = {}, retry = true): Promise<Response> {
   const session = parseAdminSession(adminSnapshot());
   if (!session) throw new ApiError("Please sign in as an administrator.", 401, "AUTH_REQUIRED");
   const headers = new Headers(init.headers);
@@ -99,9 +99,13 @@ export async function adminRequest<T>(path: string, init: RequestInit = {}, retr
   const response = await fetch(`${API_URL}${path}`, { ...init, headers });
   if (response.status === 401 && retry) {
     await refresh(session);
-    return adminRequest<T>(path, init, false);
+    return adminRawRequest(path, init, false);
   }
-  return read<T>(response);
+  return response;
+}
+
+export async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return read<T>(await adminRawRequest(path, init));
 }
 
 export async function adminLogout() {

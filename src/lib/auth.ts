@@ -5,6 +5,7 @@ export type AuthUser = {
   phone?: string | null;
   city?: string | null;
   postalCode?: string | null;
+  conversationLanguage?: "auto" | "en" | "hi" | "hinglish";
   role: "USER" | "ADMIN" | "SUPER_ADMIN";
   isActive: boolean;
   emailVerified: boolean;
@@ -114,7 +115,7 @@ export async function register(name: string, email: string, password: string, de
   return establishSession(tokens, true);
 }
 
-export async function updateProfile(details: Pick<AuthUser, "name" | "phone" | "city" | "postalCode">) {
+export async function updateProfile(details: Pick<AuthUser, "name" | "phone" | "city" | "postalCode" | "conversationLanguage">) {
   const user = await authenticatedFetch<AuthUser>("/users/me", { method: "PATCH", body: JSON.stringify(details) });
   // Keep the latest tokens if the request refreshed the session.
   const session = parseAuthSession(getAuthSnapshot());

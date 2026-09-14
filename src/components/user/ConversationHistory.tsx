@@ -1,5 +1,7 @@
 "use client";
 
+import { UserSkeleton } from "./UserSkeleton";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authenticatedFetch } from "@/lib/auth";
@@ -31,7 +33,8 @@ export function RecentConversations({ sidebar = false, close, selected }: { side
     } catch { setDeleteError("Unable to delete this conversation. Please try again."); }
     finally { setDeleting(null); }
   }
-  if (loading || error || !chats.length) return <p className="plan-fine-print" role={error ? "alert" : "status"}>{error || (loading ? "Loading conversations..." : "No conversations yet. Start a chat with a master.")}</p>;
+  if (loading) return <UserSkeleton count={3} label="Loading conversations" />;
+  if (error || !chats.length) return <p className="plan-fine-print" role={error ? "alert" : "status"}>{error || (loading ? "Loading conversations..." : "No conversations yet. Start a chat with a master.")}</p>;
   const visible = chats.filter((chat) => !removed.includes(chat.id)).slice(0, sidebar ? 20 : 3);
   return <>{deleteError && <p className="plan-fine-print" role="alert">{deleteError}</p>}{visible.map((chat) => sidebar ? <div className={`sidebar-conversation${selected === chat.id ? " active" : ""}`} key={chat.id}>
     <Link href={conversationHref(chat)} onClick={close} title={chat.title || "New conversation"}><strong>{conversationTitle(chat)}</strong><small>{chat.master.name}</small></Link>

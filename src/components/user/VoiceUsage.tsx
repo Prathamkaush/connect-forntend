@@ -1,5 +1,7 @@
 "use client";
 
+import { UserSkeleton } from "./UserSkeleton";
+
 import Link from "next/link";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { authenticatedFetch } from "@/lib/auth";
@@ -66,6 +68,7 @@ export function VoiceAccount() {
     }
   }
 
+  if (loading && !allowance) return <div className="voice-account"><UserSkeleton variant="hero" label="Loading call allowance" /><UserSkeleton label="Loading call history" /></div>;
   const used = allowance?.usedSeconds ?? 0;
   const total = allowance?.totalSeconds ?? 0;
   const percent = total ? Math.min(100, used / total * 100) : 0;
@@ -85,7 +88,7 @@ export function VoiceAccount() {
         }}>End active call</button>}
       </div>
       {error && <p role="alert">{error} <button type="button" onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
-      {loading ? <p className="voice-history-loading" role="status"><span className="voice-loading-spinner" />Loading call history…</p> : !calls.length && !error ? <p>No voice calls yet.</p> : null}
+      {loading ? <UserSkeleton label="Loading call history" /> : !calls.length && !error ? <p>No voice calls yet.</p> : null}
       {!!calls.length && <><p className="voice-history-hint">Scroll for older calls. Three calls load at a time.</p>
         <div ref={scroll} className="voice-history-scroll" tabIndex={0} role="region" aria-label="Call history" aria-busy={loadingMore} onScroll={(event) => {
           const element = event.currentTarget;
@@ -93,7 +96,7 @@ export function VoiceAccount() {
         }}>
           <ul className="voice-history">{calls.map((item) => <li key={item.id}><div><strong>{item.master?.name ?? "Master"}</strong><small>{item.createdAt && new Date(item.createdAt).toLocaleString()}</small></div><span>{voiceTime(item.billableSeconds)} · {item.status.toLowerCase()}<small>{item.endReason?.replaceAll("_", " ").toLowerCase()}</small></span></li>)}</ul>
           {historyError && <p role="alert">{historyError}</p>}
-          {more && <button className="voice-history-more" type="button" disabled={loadingMore || loading} onClick={() => void loadMore()}>{loadingMore ? <span role="status"><span className="voice-loading-spinner" />Loading next three calls…</span> : historyError ? "Retry loading calls" : "Load next three calls"}</button>}
+          {more && <button className="voice-history-more" type="button" disabled={loadingMore || loading} onClick={() => void loadMore()}>{loadingMore ? <span className="user-shimmer skeleton-button" role="status" aria-label="Loading older calls" /> : historyError ? "Retry loading calls" : "Load next three calls"}</button>}
           {!more && <p className="voice-history-hint">You’ve reached the end of your call history.</p>}
         </div></>}
     </section>

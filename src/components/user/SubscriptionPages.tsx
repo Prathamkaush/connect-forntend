@@ -1,5 +1,7 @@
 "use client";
 
+import { UserSkeleton } from "./UserSkeleton";
+
 import { VoiceAccount } from "./VoiceUsage";
 import Link from "next/link";
 import { CSSProperties, useEffect, useRef, useState } from "react";
@@ -58,7 +60,7 @@ export function SubscriptionPage({ current, refresh }: { current: Membership | n
     <div className="user-page-heading centered"><div><span className="user-kicker">Go deeper at your pace</span><h2>Choose Your Plan</h2><p>Begin free, then continue with a plan whenever you are ready.</p></div></div>
     {error && <p role="alert" className="user-auth-error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {receipt && <button className="user-primary-action" disabled={busy} onClick={() => void verify(receipt)}>Retry verification</button>}
-    {plans === null && !error && <p role="status">Loading plans...</p>}{plans?.length === 0 && <section className="user-surface">No plans are available yet.</section>}
+    {plans === null && !error && <UserSkeleton variant="plans" count={3} label="Loading plans" />}{plans?.length === 0 && <section className="user-surface">No plans are available yet.</section>}
     <div className="user-plan-grid">{plans?.map((item, index) => {
       const isCurrent = item.name === current?.plan || (Number(item.price) === 0 && current?.expiresAt === null);
       const featured = plans.length > 1 && index === 1;
@@ -76,6 +78,7 @@ export function SubscriptionPage({ current, refresh }: { current: Membership | n
 }
 
 export function SubscriptionUsage({ current }: { current: Membership | null }) {
+  if (!current) return <div className="user-standard-page narrow"><UserSkeleton variant="hero" label="Loading question balance" /><UserSkeleton variant="hero" label="Loading call balance" /><UserSkeleton label="Loading usage" /></div>;
   const used = current?.usedQuestions ?? 0;
   const total = current?.totalQuestions ?? 0;
   const remaining = current?.remainingQuestions ?? 0;
@@ -93,7 +96,42 @@ export function SubscriptionUsage({ current }: { current: Membership | null }) {
 export function SubscriptionBilling({ current }: { current: Membership | null }) {
   const [payments, setPayments] = useState<Payment[] | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { authenticatedFetch<Payment[]>("/payments").then(setPayments).catch((error) => setError(message(error))); }, []);
+  const [historyError, setHistoryError] = useState("");
+  const [loadingPayments, setLoadingPayments] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [retryHistory, setRetryHistory] = useState(0);
+  const paymentsPending = useRef(false);
+  const paymentVersion = useRef(0);
+  useEffect(() => {
+    const version = ++paymentVersion.current;
+    paymentsPending.current = true;
+    authenticatedFetch<Payment[]>("/payments?limit=5").then((rows) => {
+      if (version !== paymentVersion.current) return;
+      setPayments(rows); setHasMore(rows.length === 5); setHistoryError("");
+    }).catch((caught) => {
+      if (version === paymentVersion.current) setHistoryError(message(caught));
+    }).finally(() => {
+      if (version === paymentVersion.current) { paymentsPending.current = false; setLoadingPayments(false); }
+    });
+    return () => { paymentVersion.current += 1; };
+  }, [retryHistory]);
+  async function loadMorePayments() {
+    const last = payments?.at(-1);
+    if (paymentsPending.current || !hasMore || !last) return;
+    paymentsPending.current = true; setLoadingPayments(true); setHistoryError("");
+    const version = paymentVersion.current;
+    try {
+      const query = new URLSearchParams({ limit: "5", before: last.createdAt, beforeId: last.id });
+      const rows = await authenticatedFetch<Payment[]>(`/payments?${query}`);
+      if (version !== paymentVersion.current) return;
+      setPayments((previous) => [...(previous ?? []), ...rows.filter((row) => !previous?.some((item) => item.id === row.id))]);
+      setHasMore(rows.length === 5);
+    } catch (caught) {
+      if (version === paymentVersion.current) setHistoryError(message(caught));
+    } finally {
+      if (version === paymentVersion.current) { paymentsPending.current = false; setLoadingPayments(false); }
+    }
+  }
   const [downloading, setDownloading] = useState<string | null>(null);
   async function download(payment: Payment) {
     if (!payment.invoice || downloading) return;
@@ -110,11 +148,21 @@ export function SubscriptionBilling({ current }: { current: Membership | null })
   }
   return <div className="user-standard-page">
     <div className="user-page-heading"><div><span className="user-kicker">Payments</span><h2>Billing &amp; Invoices</h2><p>View your payment details and download previous invoices.</p></div></div>
-    <section className="billing-current"><div><span className="user-kicker light">Current plan</span><h3>{current?.plan ?? "Loading..."}</h3><p>{current ? `${current.remainingQuestions} questions remaining / ${current.expiresAt ? `Valid until ${new Date(current.expiresAt).toLocaleDateString()}` : "No recurring payment"}` : "Loading your plan details..."}</p></div><Link href="/user/plan">{current?.expiresAt ? "Manage plan" : "Upgrade plan"}</Link></section>
+    {!current ? <UserSkeleton variant="hero" label="Loading current plan" /> : <section className="billing-current"><div><span className="user-kicker light">Current plan</span><h3>{current?.plan ?? "Loading..."}</h3><p>{current ? `${current.remainingQuestions} questions remaining / ${current.expiresAt ? `Valid until ${new Date(current.expiresAt).toLocaleDateString()}` : "No recurring payment"}` : "Loading your plan details..."}</p></div><Link href="/user/plan">{current?.expiresAt ? "Manage plan" : "Upgrade plan"}</Link></section>}
     <section className="user-surface payment-method"><div><span className="user-kicker">Secure checkout</span><h3>Payment details</h3></div><div className="payment-card-row"><span><i className="bi bi-credit-card-2-front-fill" /></span><div><strong>Razorpay</strong><small>Choose your payment method at checkout / No automatic renewal</small></div></div></section>
     <section className="user-surface invoice-list"><div className="user-section-head compact"><div><span className="user-kicker">Receipts</span><h3>Payment history</h3></div></div>
-      {error && <p role="alert" className="user-auth-error">{error}</p>}{!payments && !error && <p className="plan-fine-print" role="status">Loading payments...</p>}{payments?.length === 0 && <p className="plan-fine-print">You have no payments yet. Your invoices will appear here after a purchase.</p>}
-      {!!payments?.length && <div className="invoice-table"><div className="invoice-head"><span>Invoice</span><span>Plan</span><span>Date</span><span>Amount</span><span>Status</span><span /></div>{payments.map((payment) => <div className="invoice-row" key={payment.id}><strong>{payment.invoice?.invoiceNumber ?? "Pending"}</strong><span>{payment.plan.name}</span><span>{new Date(payment.createdAt).toLocaleDateString()}</span><b>{money(payment.amount, payment.currency)}</b><em>{payment.status.charAt(0) + payment.status.slice(1).toLowerCase()}</em><button type="button" disabled={!payment.invoice || downloading !== null} onClick={() => void download(payment)} title={payment.invoice ? "Download invoice" : "Invoice available after payment"} aria-label={payment.invoice ? `Download invoice ${payment.invoice.invoiceNumber}` : "Invoice unavailable"}><i className={`bi bi-${downloading === payment.id ? "hourglass-split" : "download"}`} /></button></div>)}</div>}
+      {error && <p role="alert" className="user-auth-error">{error}</p>}{!payments && loadingPayments && <UserSkeleton count={5} label="Loading payments" />}{payments?.length === 0 && <p className="plan-fine-print">You have no payments yet. Your invoices will appear here after a purchase.</p>}
+      {!!payments?.length && <div className="invoice-table payment-history-scroll" tabIndex={0} role="region" aria-label="Payment history" aria-busy={loadingPayments} onScroll={(event) => {
+        const element = event.currentTarget;
+        if (!historyError && element.scrollTop > 0 && element.scrollHeight - element.scrollTop - element.clientHeight < 48) void loadMorePayments();
+      }}><div className="invoice-head"><span>Invoice</span><span>Plan</span><span>Date</span><span>Amount</span><span>Status</span><span /></div>{payments.map((payment) => <div className="invoice-row" key={payment.id}><strong>{payment.invoice?.invoiceNumber ?? "Pending"}</strong><span>{payment.plan.name}</span><span>{new Date(payment.createdAt).toLocaleDateString()}</span><b>{money(payment.amount, payment.currency)}</b><em>{payment.status.charAt(0) + payment.status.slice(1).toLowerCase()}</em><button type="button" disabled={!payment.invoice || downloading !== null} onClick={() => void download(payment)} title={payment.invoice ? "Download invoice" : "Invoice available after payment"} aria-label={payment.invoice ? `Download invoice ${payment.invoice.invoiceNumber}` : "Invoice unavailable"}><i className={`bi bi-${downloading === payment.id ? "hourglass-split" : "download"}`} /></button></div>)}</div>}
+      {historyError && <p role="alert" className="user-auth-error">{historyError}</p>}
+      {loadingPayments && payments && <UserSkeleton count={1} label="Loading next five payments" />}
+      {!loadingPayments && (hasMore || (!payments && historyError)) && <button className="payment-history-more" type="button" onClick={() => {
+        if (!payments) { setLoadingPayments(true); setHistoryError(""); setRetryHistory((value) => value + 1); }
+        else void loadMorePayments();
+      }}>{historyError ? "Retry loading payments" : "Load next five payments"}</button>}
+      {payments && payments.length > 0 && !hasMore && <p className="plan-fine-print">All payments loaded.</p>}
     </section>
   </div>;
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { UserSkeleton } from "./UserSkeleton";
+
 import Link from "next/link";
 import { VoiceBalance } from "./VoiceCall";
 import { DashboardMasters } from "./DashboardMasters";
@@ -169,7 +171,7 @@ export function UserPortal({ path }: { path: string[] }) {
 
   if (!signedIn) return <UserAuth />;
 
-  const page = section === "teachers" ? <LiveTeachersPage profileSlug={detail} fallback={<TeachersPage profileSlug={detail} />} />
+  const page = section === "teachers" ? <LiveTeachersPage key={detail || "masters"} profileSlug={detail} fallback={<TeachersPage profileSlug={detail} />} />
     : section === "chat" ? <LiveChatPage key={`${userId}-${detail}-${path[2] || "new"}`} teacherSlug={detail} savedConversationId={path[2]} remaining={questionBalance} />
     : section === "history" ? <HistoryPage />
     : section === "usage" ? <SubscriptionUsage current={membership} />
@@ -178,5 +180,5 @@ export function UserPortal({ path }: { path: string[] }) {
     : section === "settings" ? <SettingsPage notify={notify} />
     : <WelcomePage remaining={questionBalance} plan={plan} />;
 
-  return <ConversationContext.Provider value={history.owner === userId ? history : { chats: [], loading: true, error: "" }}><main className="user-shell"><UserSidebar selected={path[2]} current={current} open={sidebarOpen} close={() => setSidebarOpen(false)} balance={questionBalance} plan={plan} />{sidebarOpen && <button className="user-sidebar-overlay" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close menu" />}<section className={`user-main${section === "chat" ? " chat-active" : ""}`}><UserTopbar title={titles[section] || "My Space"} openMenu={() => setSidebarOpen(true)} remaining={questionBalance} plan={plan} />{membershipError && <p role="alert" className="user-auth-error">{membershipError}</p>}{page}</section>{toast && <div className="user-toast"><i className="bi bi-check-circle-fill" />{toast}</div>}<button className="user-mobile-new-chat" type="button" aria-label="Start new chat" onClick={() => router.push("/user")}><i className="bi bi-plus-lg" /></button></main></ConversationContext.Provider>;
+  return <ConversationContext.Provider value={history.owner === userId ? history : { chats: [], loading: true, error: "" }}><main className="user-shell"><UserSidebar selected={path[2]} current={current} open={sidebarOpen} close={() => setSidebarOpen(false)} balance={questionBalance} plan={plan} />{sidebarOpen && <button className="user-sidebar-overlay" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close menu" />}<section className={`user-main${section === "chat" ? " chat-active" : ""}`}><UserTopbar title={titles[section] || "My Space"} openMenu={() => setSidebarOpen(true)} remaining={questionBalance} plan={plan} />{membershipError && <p role="alert" className="user-auth-error">{membershipError}</p>}{!membership && !membershipError && section === "home" ? <div className="user-welcome"><UserSkeleton variant="hero" label="Loading your dashboard" /><UserSkeleton variant="cards" count={4} label="Loading masters" /><UserSkeleton count={2} /></div> : page}</section>{toast && <div className="user-toast"><i className="bi bi-check-circle-fill" />{toast}</div>}<button className="user-mobile-new-chat" type="button" aria-label="Start new chat" onClick={() => router.push("/user")}><i className="bi bi-plus-lg" /></button></main></ConversationContext.Provider>;
 }
