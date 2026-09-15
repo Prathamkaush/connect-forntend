@@ -1,5 +1,7 @@
 "use client";
 
+import { CUSTOMER_CALLS_ENABLED } from "@/lib/features";
+
 import { UserSkeleton } from "./UserSkeleton";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -49,12 +51,12 @@ function ProfileForm({ profile, notify }: { profile: AuthUser; notify: (message:
         <label>Postal code<input value={fields.postalCode} onChange={(event) => change("postalCode", event.target.value)} autoComplete="postal-code" placeholder="Postal / ZIP code" minLength={2} maxLength={12} disabled={busy} /></label>
       </div>
     </section>
-    <section className="user-surface"><span className="user-kicker">Conversation</span><h3>Chat and voice language</h3>
+    <section className="user-surface"><span className="user-kicker">Conversation</span><h3>{CUSTOMER_CALLS_ENABLED ? "Chat and voice language" : "Chat language"}</h3>
       <div className="user-settings-grid"><label>Preferred language<select value={fields.conversationLanguage} onChange={(event) => change("conversationLanguage", event.target.value)} disabled={busy}>
         <option value="auto">Match my language</option><option value="en">English</option><option value="hi">हिन्दी (Hindi)</option><option value="hinglish">Hinglish (Hindi in English letters)</option>
       </select></label></div>
       <p>Type or speak naturally, including “krishna ji mera sath aisa ku hota h”. Match my language follows your language and writing style. Hindi replies use हिन्दी; Hinglish replies use English letters.</p>
-      <p>Applies after saving to your next chat reply and new voice calls.</p>
+      <p>{CUSTOMER_CALLS_ENABLED ? "Applies after saving to your next chat reply and new voice calls." : "Applies after saving to your next chat reply."}</p>
     </section>
     {error && <p role="alert" className="user-auth-error">{error}</p>}
     {saved && <p role="status">Your profile details are up to date.</p>}

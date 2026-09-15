@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { authenticatedFetch } from "@/lib/auth";
 import { adminRequest } from "@/lib/admin-api";
 import { createCallSounds } from "@/lib/call-sounds";
+import { CUSTOMER_CALLS_ENABLED } from "@/lib/features";
 
 export const voiceTime = (seconds: number) => `${Math.floor(Math.max(0, seconds) / 60)}:${String(Math.floor(Math.max(0, seconds)) % 60).padStart(2, "0")}`;
 type Teacher = { id: string; name: string; imageUrl: string | null; voiceEnabled: boolean };
@@ -15,7 +16,7 @@ const terminal = (call: CallRecord) => call.status === "ENDED" || call.status ==
 
 export function VoiceCallButton({ master, conversationId, adminTest = false }: { master: Teacher; conversationId?: string; adminTest?: boolean }) {
   const [open, setOpen] = useState(false);
-  if (!master.voiceEnabled) return null;
+  if ((!adminTest && !CUSTOMER_CALLS_ENABLED) || !master.voiceEnabled) return null;
   return <><button className="voice-call-button" type="button" onClick={() => setOpen(true)}><i className="bi bi-telephone" />{adminTest ? "Test voice call" : "Call"}</button>{open && createPortal(<VoiceCallPanel master={master} conversationId={conversationId} adminTest={adminTest} close={() => setOpen(false)} />, document.body)}</>;
 }
 

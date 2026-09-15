@@ -1,5 +1,7 @@
 "use client";
 
+import { CUSTOMER_CALLS_ENABLED } from "@/lib/features";
+
 import { UserSkeleton } from "./UserSkeleton";
 
 import Link from "next/link";
@@ -65,7 +67,7 @@ function UserSidebar({ current, open, close, balance, plan, selected }: { select
 
 function UserTopbar({ title, openMenu, remaining, plan }: { title: string; openMenu: () => void; remaining: number; plan: string }) {
   const unlimited = false;
-  return <header className="user-topbar"><div><button className="user-menu-button" type="button" onClick={openMenu} aria-label="Open menu"><i className="bi bi-list" /></button><span className="user-topbar-mark">ॐ</span><h1>{title}</h1></div><div><Link href="/user/usage" className="user-balance-pill"><span>{unlimited ? "∞" : remaining}</span><div><small>{unlimited ? "Question access" : "Questions left"}</small><strong>{unlimited ? "Unlimited" : plan === "Free Explorer" ? `${remaining} of 5 free` : `${remaining} available`}</strong></div></Link><VoiceBalance /><button className="user-help-button" type="button" aria-label="Help"><i className="bi bi-question-circle" /></button></div></header>;
+  return <header className="user-topbar"><div><button className="user-menu-button" type="button" onClick={openMenu} aria-label="Open menu"><i className="bi bi-list" /></button><span className="user-topbar-mark">ॐ</span><h1>{title}</h1></div><div><Link href="/user/usage" className="user-balance-pill"><span>{unlimited ? "∞" : remaining}</span><div><small>{unlimited ? "Question access" : "Questions left"}</small><strong>{unlimited ? "Unlimited" : plan === "Free Explorer" ? `${remaining} of 5 free` : `${remaining} available`}</strong></div></Link>{CUSTOMER_CALLS_ENABLED && <VoiceBalance />}<button className="user-help-button" type="button" aria-label="Help"><i className="bi bi-question-circle" /></button></div></header>;
 }
 
 function WelcomePage({ remaining, plan }: { remaining: number; plan: string }) {

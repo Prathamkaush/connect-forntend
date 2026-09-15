@@ -1,5 +1,7 @@
 "use client";
 
+import { CUSTOMER_CALLS_ENABLED } from "@/lib/features";
+
 import { UserSkeleton } from "./UserSkeleton";
 
 import { VoiceAccount } from "./VoiceUsage";
@@ -64,7 +66,7 @@ export function SubscriptionPage({ current, refresh }: { current: Membership | n
     <div className="user-plan-grid">{plans?.map((item, index) => {
       const isCurrent = item.name === current?.plan || (Number(item.price) === 0 && current?.expiresAt === null);
       const featured = plans.length > 1 && index === 1;
-      const features = [item.description, `${item.questionQuota} text questions included`, item.voiceEnabled ? `${Math.floor(item.voiceSeconds / 60)} voice minutes shared across teachers` : "Voice calls not included", `${item.validityDays} days of access`, Number(item.price) > 0 ? "One-time payment / No auto-renewal" : "Free access included"];
+      const features = [item.description, `${item.questionQuota} text questions included`, ...(CUSTOMER_CALLS_ENABLED ? [item.voiceEnabled ? `${Math.floor(item.voiceSeconds / 60)} voice minutes shared across teachers` : "Voice calls not included"] : []), `${item.validityDays} days of access`, Number(item.price) > 0 ? "One-time payment / No auto-renewal" : "Free access included"];
       return <article className={`user-plan-card${featured ? " featured" : ""}`} key={item.id}>
         {featured && <span className="popular-plan">Explore more</span>}<span className="user-kicker">{isCurrent ? "Your current plan" : "Membership"}</span><h3>{item.name}</h3>
         <div className="user-plan-price"><strong>{money(item.price, item.currency)}</strong>{Number(item.price) > 0 && <small> / {item.validityDays} days</small>}</div><p>{item.questionQuota} questions</p>
@@ -78,16 +80,16 @@ export function SubscriptionPage({ current, refresh }: { current: Membership | n
 }
 
 export function SubscriptionUsage({ current }: { current: Membership | null }) {
-  if (!current) return <div className="user-standard-page narrow"><UserSkeleton variant="hero" label="Loading question balance" /><UserSkeleton variant="hero" label="Loading call balance" /><UserSkeleton label="Loading usage" /></div>;
+  if (!current) return <div className="user-standard-page narrow"><UserSkeleton variant="hero" label="Loading question balance" />{CUSTOMER_CALLS_ENABLED && <UserSkeleton variant="hero" label="Loading call balance" />}<UserSkeleton label="Loading usage" /></div>;
   const used = current?.usedQuestions ?? 0;
   const total = current?.totalQuestions ?? 0;
   const remaining = current?.remainingQuestions ?? 0;
   const reserved = Math.max(0, total - used - remaining);
   const percent = (value: number) => total ? Math.min(100, value / total * 100) : 0;
   return <div className="user-standard-page narrow">
-    <div className="user-page-heading"><div><span className="user-kicker">Your usage</span><h2>Usage &amp; Balance</h2><p>Track your questions and call time, review call history, and see what is available in your plan.</p></div></div>
+    <div className="user-page-heading"><div><span className="user-kicker">Your usage</span><h2>Usage &amp; Balance</h2><p>{CUSTOMER_CALLS_ENABLED ? "Track your questions and call time, review call history, and see what is available in your plan." : "Track your questions and see what is available in your plan."}</p></div></div>
     <section className="usage-hero-card"><div className="usage-circle" style={{ "--usage": `${percent(used)}%` } as CSSProperties}><span><strong>{current ? remaining : "-"}</strong><small>questions<br />remaining</small></span></div><div><span className="user-kicker light">{current?.plan ?? "Loading..."}</span><h3>{current ? `${used} of your ${total} questions used` : "Loading your question balance..."}</h3><p>{current?.expiresAt ? `Your current allowance is valid until ${new Date(current.expiresAt).toLocaleDateString()}. Purchase a plan whenever you need more questions.` : "Your free questions never expire. Upgrade any time for more conversations with your masters."}</p><Link href="/user/plan">Manage your plan <i className="bi bi-arrow-right" /></Link></div></section>
-    <VoiceAccount />
+    {CUSTOMER_CALLS_ENABLED && <VoiceAccount />}
     <div className="usage-stats">{[{ icon: "chat-heart", value: used, label: "Questions asked" }, { icon: "chat-dots", value: remaining, label: "Questions remaining" }, { icon: "collection", value: total, label: "Plan allowance" }].map((item) => <article key={item.label}><i className={`bi bi-${item.icon}`} /><span><strong>{current ? item.value : "-"}</strong><small>{item.label}</small></span></article>)}</div>
     <section className="user-surface usage-breakdown"><header className="user-section-head compact"><div><span className="user-kicker">Your allowance</span><h3>Question breakdown</h3></div></header>{[{ label: "Used", value: used, icon: "chat-heart" }, { label: "Available", value: remaining, icon: "chat-dots" }, { label: "In progress", value: reserved, icon: "clock-history" }].map((item) => <div key={item.label}><span className="mini-master"><i className={`bi bi-${item.icon}`} /></span><strong>{item.label}</strong><div><i style={{ width: `${percent(item.value)}%` }} /></div><b>{current ? `${item.value} questions` : "-"}</b></div>)}</section>
   </div>;
